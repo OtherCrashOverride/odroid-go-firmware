@@ -1,2 +1,4 @@
 build/
 sdkconfig.old
+firmware.bin
+makefirmware
