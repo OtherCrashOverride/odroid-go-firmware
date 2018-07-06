@@ -73,7 +73,7 @@ void app_main(void)
                             // ensure null terminated
                             FirmwareDescription[FIRMWARE_DESCRIPTION_SIZE - 1] = 0;
 
-                            printf("FirmwareDescription='%s", FirmwareDescription);
+                            printf("FirmwareDescription='%s'\n", FirmwareDescription);
 
                             // Copy the firmware
                             bool errorFlag = false;
@@ -137,7 +137,6 @@ void app_main(void)
                                 // turn LED on
                                 gpio_set_level(GPIO_NUM_2, 1);
 
-
                                 // flash
                                 ret = esp_partition_write(part, 0, data, length);
                                 if (ret != ESP_OK)
@@ -148,6 +147,10 @@ void app_main(void)
                         		}
 
                                 // TODO: verify
+
+                                free(data);
+
+                                printf("Complete: slot=%d, length=%d\n", slot, length);
                             }
 
                             if (!errorFlag)
