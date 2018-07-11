@@ -140,7 +140,7 @@ void app_main(void)
     top += textHeight;
 
     UG_TextboxCreate(&window1, &textbox1, TXB_ID_0, 0, top, width, top + textHeight - 1);
-	UG_TextboxSetFont(&window1, TXB_ID_0, &FONT_16X26);
+	UG_TextboxSetFont(&window1, TXB_ID_0, &FONT_12X20);
 	UG_TextboxSetText(&window1, TXB_ID_0, "Loading ...");
 	UG_TextboxSetForeColor(&window1, TXB_ID_0, C_BLACK);
     UG_TextboxSetAlignment(&window1, TXB_ID_0, ALIGN_TOP_CENTER);
