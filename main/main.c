@@ -227,44 +227,23 @@ void app_main(void)
     DisplayFooter("FLASH START");
 
 
-    //indicate_error();
+    const int ERASE_BLOCK_SIZE = 4096;
+    void* data = malloc(ERASE_BLOCK_SIZE);
+    if (!data)
+    {
+        DisplayError("DATA MEMORY ERROR");
+        indicate_error();
+    }
 
 
     // Copy the firmware
-    bool errorFlag = false;
-
     while(true)
     {
+        // Partition
         uint32_t slot;
         count = fread(&slot, 1, sizeof(slot), file);
         if (count != sizeof(slot))
         {
-            //errorFlag = true;
-            break;
-        }
-
-        uint32_t length;
-        count = fread(&length, 1, sizeof(length), file);
-        if (count != sizeof(length))
-        {
-            DisplayError("LENGTH READ ERROR");
-            errorFlag = true;
-            break;
-        }
-
-        void* data = heap_caps_malloc(length, MALLOC_CAP_SPIRAM);
-        if (!data)
-        {
-            DisplayError("DATA MEMORY ERROR");
-            errorFlag = true;
-            break;
-        }
-
-        count = fread(data, 1, length, file);
-        if (count != length)
-        {
-            DisplayError("DATA READ ERROR");
-            errorFlag = true;
             break;
         }
 
@@ -274,50 +253,120 @@ void app_main(void)
         {
              printf("esp_partition_find_first failed. slot=%d\n", slot);
              DisplayError("PARTITION ERROR");
-             errorFlag = true;
-             break;
+             indicate_error();
         }
+
+
+        // Length
+        uint32_t length;
+        count = fread(&length, 1, sizeof(length), file);
+        if (count != sizeof(length))
+        {
+            DisplayError("LENGTH READ ERROR");
+            indicate_error();
+        }
+
+        size_t nextEntry = ftell(file) + length;
+
 
         // turn LED off
         gpio_set_level(GPIO_NUM_2, 0);
 
+
         // erase
-        const int ERASE_BLOCK_SIZE = 4096;;
-    	int eraseBlocks = length / ERASE_BLOCK_SIZE;
-    	if (eraseBlocks * ERASE_BLOCK_SIZE < length) ++eraseBlocks;
+        int eraseBlocks = length / ERASE_BLOCK_SIZE;
+        if (eraseBlocks * ERASE_BLOCK_SIZE < length) ++eraseBlocks;
+
+        // Display
+        sprintf(tempstring, "ERASE: [%d] BLOCKS=%#04x", slot, eraseBlocks);
+
+        printf("%s\n", tempstring);
+        DisplayMessage(tempstring);
+
         esp_err_t ret = esp_partition_erase_range(part, 0, eraseBlocks * ERASE_BLOCK_SIZE);
-		if (ret != ESP_OK)
-		{
-			printf("esp_partition_erase_range failed. eraseBlocks=%d\n", eraseBlocks);
+        if (ret != ESP_OK)
+        {
+            printf("esp_partition_erase_range failed. eraseBlocks=%d\n", eraseBlocks);
             DisplayError("ERASE ERROR");
-            errorFlag = true;
-            break;
-		}
+            indicate_error();
+        }
 
         // turn LED on
         gpio_set_level(GPIO_NUM_2, 1);
 
-        // flash
-        ret = esp_partition_write(part, 0, data, length);
-        if (ret != ESP_OK)
-		{
-			printf("esp_partition_write failed.\n");
-            DisplayError("WRITE ERROR");
-            errorFlag = true;
-            break;
-		}
+
+        // Write data
+        int totalCount = 0;
+        for (int offset = 0; offset < length; offset += ERASE_BLOCK_SIZE)
+        {
+            // Display
+            sprintf(tempstring, "BLOCK: [%d] %#06x", slot, offset);
+
+            printf("%s\n", tempstring);
+            DisplayMessage(tempstring);
+
+
+            // read
+            //printf("Reading offset=0x%x\n", offset);
+            count = fread(data, 1, ERASE_BLOCK_SIZE, file);
+            if (count <= 0)
+            {
+                DisplayError("DATA READ ERROR");
+                indicate_error();
+            }
+
+            if (offset + count >= length)
+            {
+                count = length - offset;
+            }
+
+
+            // flash
+            //printf("Writing offset=0x%x\n", offset);
+            ret = esp_partition_write(part, offset, data, count);
+            if (ret != ESP_OK)
+    		{
+    			printf("esp_partition_write failed.\n");
+                DisplayError("WRITE ERROR");
+                indicate_error();
+    		}
+
+            totalCount += count;
+        }
+
+        if (totalCount != length)
+        {
+            printf("Size mismatch: lenght=%#06x, totalCount=%#06x\n", length, totalCount);
+            DisplayError("DATA SIZE ERROR");
+            indicate_error();
+        }
+
 
         // TODO: verify
 
-        free(data);
 
-        sprintf(tempstring, "OK: [%d] Length=%d", slot, length);
+
+
+        // Notify OK
+        sprintf(tempstring, "OK: [%d] Length=%#06x", slot, length);
 
         printf("%s\n", tempstring);
         DisplayFooter(tempstring);
+
+
+        // Seek to next entry
+        if (fseek(file, nextEntry, SEEK_SET) != 0)
+        {
+            DisplayError("SEEK ERROR");
+            indicate_error();
+        }
     }
 
-    if (!errorFlag)
+
+    free(data);
+
+
+    //if (!errorFlag)
     {
         printf("Rebooting.\n");
 
