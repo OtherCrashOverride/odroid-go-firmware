@@ -189,9 +189,34 @@ void flash_firmware(const char* fullPath)
     UG_TextboxSetText(&window1, TXB_ID_0, FirmwareDescription);
     UpdateDisplay();
 
+    // start to begin, b back
+    DisplayMessage("[Start] = OK, [B] = Cancel");
+    UpdateDisplay();
+
+    odroid_gamepad_state previousState;
+    input_read(&previousState);
+    while (true)
+    {
+        odroid_gamepad_state state;
+        input_read(&state);
+
+        if(!previousState.values[ODROID_INPUT_START] && state.values[ODROID_INPUT_START])
+        {
+            break;
+        }
+        else if(!previousState.values[ODROID_INPUT_B] && state.values[ODROID_INPUT_B])
+        {
+            return;
+        }
+
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
+
+    DisplayMessage("");
+    UpdateDisplay();
 
     DisplayFooter("FLASH START");
-
+    //abort();
 
     const int ERASE_BLOCK_SIZE = 4096;
     void* data = malloc(ERASE_BLOCK_SIZE);
@@ -617,12 +642,17 @@ static void menu_main()
     // Check for /odroid/firmware
     const char* path = "/sd/odroid/firmware";
 
-    const char* fileName = menu_choose_file(path);
-    if (!fileName) abort();
+    while(1)
+    {
+        const char* fileName = menu_choose_file(path);
+        if (!fileName) abort();
 
-    printf("%s: fileName='%s'\n", __func__, fileName);
+        printf("%s: fileName='%s'\n", __func__, fileName);
 
-    flash_firmware(fileName);
+        flash_firmware(fileName);
+    }
+
+    indicate_error();
 }
 
 
