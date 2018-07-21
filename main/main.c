@@ -19,7 +19,6 @@
 
 
 const char* SD_CARD = "/sd";
-const char* FIRMWARE = "/sd/firmware.bin";
 const char* HEADER = "ODROIDGO_FIRMWARE_V00_00";
 
 #define FIRMWARE_DESCRIPTION_SIZE (40)
@@ -136,9 +135,9 @@ void flash_firmware(const char* fullPath)
     UpdateDisplay();
 
 
-    printf("Opening file '%s'.\n", FIRMWARE);
+    printf("Opening file '%s'.\n", fullPath);
 
-    FILE* file = fopen(FIRMWARE, "rb");
+    FILE* file = fopen(fullPath, "rb");
     if (file == NULL)
     {
         DisplayError("NO FILE ERROR");
@@ -190,12 +189,6 @@ void flash_firmware(const char* fullPath)
     UG_TextboxSetText(&window1, TXB_ID_0, FirmwareDescription);
     UpdateDisplay();
 
-
-
-    // while(gpio_get_level(GPIO_NUM_39))
-    // {
-    //     vTaskDelay(1);
-    // }
 
     DisplayFooter("FLASH START");
 
@@ -273,7 +266,7 @@ void flash_firmware(const char* fullPath)
         for (int offset = 0; offset < length; offset += ERASE_BLOCK_SIZE)
         {
             // Display
-            sprintf(tempstring, "BLOCK: [%d] %#06x", slot, offset);
+            sprintf(tempstring, "WRITE: [%d] %#08x", slot, offset);
 
             printf("%s\n", tempstring);
             DisplayMessage(tempstring);
@@ -309,7 +302,7 @@ void flash_firmware(const char* fullPath)
 
         if (totalCount != length)
         {
-            printf("Size mismatch: lenght=%#06x, totalCount=%#06x\n", length, totalCount);
+            printf("Size mismatch: lenght=%#08x, totalCount=%#08x\n", length, totalCount);
             DisplayError("DATA SIZE ERROR");
             indicate_error();
         }
@@ -321,7 +314,7 @@ void flash_firmware(const char* fullPath)
 
 
         // Notify OK
-        sprintf(tempstring, "OK: [%d] Length=%#06x", slot, length);
+        sprintf(tempstring, "OK: [%d] Length=%#08x", slot, length);
 
         printf("%s\n", tempstring);
         DisplayFooter(tempstring);
@@ -338,7 +331,13 @@ void flash_firmware(const char* fullPath)
 
     free(data);
 
+    // turn LED off
+    gpio_set_level(GPIO_NUM_2, 0);
 
+    // clear framebuffer
+    ili9341_clear(0x0000);
+
+    // boot firmware
     boot_application();
 
     indicate_error();
