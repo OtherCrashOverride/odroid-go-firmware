@@ -356,6 +356,9 @@ void flash_firmware(const char* fullPath)
 
     free(data);
 
+    // Close SD card
+    odroid_sdcard_close();
+    
     // turn LED off
     gpio_set_level(GPIO_NUM_2, 0);
 
