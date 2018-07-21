@@ -13,6 +13,7 @@
 
 #include "odroid_sdcard.h"
 #include "odroid_display.h"
+#include "input.h"
 
 #include "../components/ugui/ugui.h"
 
@@ -27,6 +28,16 @@ char FirmwareDescription[FIRMWARE_DESCRIPTION_SIZE];
 uint16_t fb[320 * 240];
 UG_GUI gui;
 char tempstring[1024];
+
+#define MAX_OBJECTS (20)
+#define ITEM_COUNT (10)
+
+UG_WINDOW window1;
+UG_TEXTBOX item_textbox[ITEM_COUNT];
+UG_TEXTBOX header_textbox;
+UG_TEXTBOX footer_textbox;
+UG_OBJECT objbuffwnd1[MAX_OBJECTS];
+
 
 
 static void indicate_error()
@@ -46,32 +57,7 @@ static void pset(UG_S16 x, UG_S16 y, UG_COLOR color)
 
 static void window1callback(UG_MESSAGE* msg)
 {
-    if (msg->type == MSG_TYPE_OBJECT)
-    {
-        if (msg->id == OBJ_TYPE_BUTTON)
-        {
-            switch (msg->sub_id)
-            {
-                case BTN_ID_0:
-                {
-                    // . . .
-                    break ;
-                }
-            }
-        }
-    }
 }
-
-
-#define MAX_OBJECTS 10
-
-UG_WINDOW window1;
-UG_BUTTON button1;
-UG_TEXTBOX textbox1;
-UG_TEXTBOX header_textbox;
-UG_TEXTBOX footer_textbox;
-UG_OBJECT objbuffwnd1 [MAX_OBJECTS];
-
 
 static void UpdateDisplay()
 {
@@ -79,93 +65,76 @@ static void UpdateDisplay()
     ili9341_write_frame_rectangleLE(0, 0, 320, 240, fb);
 }
 
+static void ClearScreen()
+{
+    // Clear screen
+    for (int i = 0; i < ITEM_COUNT; ++i)
+    {
+        uint16_t id = TXB_ID_0 + i;
+        UG_TextboxSetForeColor(&window1, id, C_BLACK);
+        UG_TextboxSetBackColor(&window1, id, C_WHITE);
+        UG_TextboxSetText(&window1, id, "");
+    }
+}
+
 static void DisplayError(const char* message)
 {
-    UG_TextboxSetForeColor(&window1, TXB_ID_0, C_RED);
-    UG_TextboxSetText(&window1, TXB_ID_0, message);
+    // for (int i = 0; i < ITEM_COUNT; ++i)
+    // {
+    //     uint16_t id = TXB_ID_0 + i;
+    //     UG_TextboxSetForeColor(&window1, id, C_BLACK);
+    //     UG_TextboxSetBackColor(&window1, id, C_WHITE);
+    //     UG_TextboxSetText(&window1, id, "");
+    // }
+
+    uint16_t err_id = TXB_ID_0 + (ITEM_COUNT / 2) - 1;
+    UG_TextboxSetForeColor(&window1, err_id, C_RED);
+    UG_TextboxSetText(&window1, err_id, message);
 
     UpdateDisplay();
 }
 
 static void DisplayMessage(const char* message)
 {
-    UG_TextboxSetForeColor(&window1, TXB_ID_0, C_BLACK);
-    UG_TextboxSetText(&window1, TXB_ID_0, message);
+    uint16_t id = TXB_ID_0 + (ITEM_COUNT / 2) - 1;
+    UG_TextboxSetForeColor(&window1, id, C_BLACK);
+    UG_TextboxSetText(&window1, id, message);
 
     UpdateDisplay();
 }
 
 static void DisplayFooter(const char* message)
 {
-    UG_TextboxSetText(&window1, TXB_ID_2, message);
+    uint16_t id = TXB_ID_0 + (ITEM_COUNT) - 1;
+    UG_TextboxSetForeColor(&window1, id, C_BLACK);
+    UG_TextboxSetText(&window1, id, message);
+
     UpdateDisplay();
 }
-
-void app_main(void)
+//---------------
+void boot_application()
 {
-    nvs_flash_init();
+    printf("Booting application.\n");
 
-    gpio_set_direction(GPIO_NUM_2, GPIO_MODE_OUTPUT);
-    gpio_set_direction(GPIO_NUM_39, GPIO_MODE_INPUT);
+    // Set firmware active
+    const esp_partition_t* partition = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
+        ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
+    if (partition != NULL)
+    {
+        esp_err_t err = esp_ota_set_boot_partition(partition);
+        if (err == ESP_OK)
+        {
+            // reboot
+            esp_restart();
+        }
+    }
+}
 
-    // turn LED on
-    gpio_set_level(GPIO_NUM_2, 1);
-
-
-    ili9341_init();
-    ili9341_clear(0x0000);
-
-    sprintf(tempstring,"ver: %s-%s", COMPILEDATE, GITREV);
-
-    UG_Init(&gui, pset, 320, 240);
-
-    UG_WindowCreate(&window1, objbuffwnd1, MAX_OBJECTS, window1callback);
-
-    UG_WindowSetTitleText(&window1, "ODROID-GO Firmware");
-    UG_WindowSetTitleTextFont(&window1, &FONT_10X16);
-    UG_WindowSetTitleTextAlignment(&window1, ALIGN_CENTER);
-
-    UG_S16 width = UG_WindowGetInnerWidth(&window1);
-    UG_S16 height = UG_WindowGetInnerHeight(&window1);
-    UG_S16 titleHeight = UG_WindowGetTitleHeight(&window1);
-    UG_S16 textHeight = (height) / 3;
-    UG_S16 top = 0;
-
-    UG_TextboxCreate(&window1, &header_textbox, TXB_ID_1, 0, top, width, top + textHeight - 1);
-    UG_TextboxSetFont(&window1, TXB_ID_1, &FONT_8X12);
-    UG_TextboxSetForeColor(&window1, TXB_ID_1, C_BLACK);
-    UG_TextboxSetAlignment(&window1, TXB_ID_1, ALIGN_TOP_CENTER);
-    UG_TextboxSetText(&window1, TXB_ID_1, tempstring);
-
-    top += textHeight;
-
-    UG_TextboxCreate(&window1, &textbox1, TXB_ID_0, 0, top, width, top + textHeight - 1);
-	UG_TextboxSetFont(&window1, TXB_ID_0, &FONT_12X20);
-	UG_TextboxSetText(&window1, TXB_ID_0, "Loading ...");
-	UG_TextboxSetForeColor(&window1, TXB_ID_0, C_BLACK);
-    UG_TextboxSetAlignment(&window1, TXB_ID_0, ALIGN_TOP_CENTER);
-
-    top += textHeight;
-
-    UG_TextboxCreate(&window1, &footer_textbox, TXB_ID_2, 0, top, width, top + textHeight - 1);
-    UG_TextboxSetFont(&window1, TXB_ID_2, &FONT_12X16);
-    UG_TextboxSetForeColor(&window1, TXB_ID_2, C_BLACK);
-    UG_TextboxSetAlignment(&window1, TXB_ID_2, ALIGN_CENTER);
-    //UG_TextboxSetText(&window1, TXB_ID_2, "TEST FOOTER");
-
-    UG_WindowShow(&window1);
+void flash_firmware(const char* fullPath)
+{
+    ClearScreen();
     UpdateDisplay();
 
-
-// ---
-
-    // look for firmware
-    esp_err_t ret = odroid_sdcard_open(SD_CARD);
-    if (ret != ESP_OK)
-    {
-        DisplayError("SD CARD ERROR");
-        indicate_error();
-    }
 
     printf("Opening file '%s'.\n", FIRMWARE);
 
@@ -216,13 +185,17 @@ void app_main(void)
 
     printf("FirmwareDescription='%s'\n", FirmwareDescription);
 
-    DisplayMessage(FirmwareDescription);
-    DisplayFooter("[Start]");
+    //DisplayMessage(FirmwareDescription);
+    //DisplayFooter("[Start]");
+    UG_TextboxSetText(&window1, TXB_ID_0, FirmwareDescription);
+    UpdateDisplay();
 
-    while(gpio_get_level(GPIO_NUM_39))
-    {
-        vTaskDelay(1);
-    }
+
+
+    // while(gpio_get_level(GPIO_NUM_39))
+    // {
+    //     vTaskDelay(1);
+    // }
 
     DisplayFooter("FLASH START");
 
@@ -366,22 +339,316 @@ void app_main(void)
     free(data);
 
 
-    //if (!errorFlag)
-    {
-        printf("Rebooting.\n");
+    boot_application();
 
-        // Set firmware active
-        const esp_partition_t* partition = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
-            ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
-        if (partition != NULL)
+    indicate_error();
+}
+
+void DrawPage(char** files, int fileCount, int currentItem)
+{
+    int page = currentItem / ITEM_COUNT;
+    page *= ITEM_COUNT;
+
+    // Reset all text boxes
+    for (int i = 0; i < ITEM_COUNT; ++i)
+    {
+        uint16_t id = TXB_ID_0 + i;
+        UG_TextboxSetText(&window1, id, "");
+    }
+
+	if (fileCount < 1)
+	{
+		const char* text = "(empty)";
+
+        uint16_t id = TXB_ID_0 + (ITEM_COUNT / 2);
+        UG_TextboxSetText(&window1, id, (char*)text);
+
+        UpdateDisplay();
+	}
+	else
+	{
+        char* displayStrings[ITEM_COUNT];
+        for(int i = 0; i < ITEM_COUNT; ++i)
         {
-            esp_err_t err = esp_ota_set_boot_partition(partition);
-            if (err == ESP_OK)
-            {
-                // reboot
-                esp_restart();
-            }
+            displayStrings[i] = NULL;
         }
+
+	    for (int line = 0; line < ITEM_COUNT; ++line)
+	    {
+			if (page + line >= fileCount) break;
+
+            uint16_t id = TXB_ID_0 + line;
+
+	        if ((page) + line == currentItem)
+	        {
+	            UG_TextboxSetForeColor(&window1, id, C_BLACK);
+                UG_TextboxSetBackColor(&window1, id, C_YELLOW);
+	        }
+	        else
+	        {
+	            UG_TextboxSetForeColor(&window1, id, C_BLACK);
+                UG_TextboxSetBackColor(&window1, id, C_WHITE);
+	        }
+
+			char* fileName = files[page + line];
+			if (!fileName) abort();
+
+			displayStrings[line] = (char*)malloc(strlen(fileName) + 1);
+            strcpy(displayStrings[line], fileName);
+            displayStrings[line][strlen(fileName) - 3] = 0; // ".fw" = 3
+
+	        UG_TextboxSetText(&window1, id, displayStrings[line]);
+	    }
+
+        UpdateDisplay();
+
+        for(int i = 0; i < ITEM_COUNT; ++i)
+        {
+            free(displayStrings[i]);
+        }
+	}
+
+
+}
+
+char** files;
+int fileCount;
+
+static const char* menu_choose_file(const char* path)
+{
+    const char* result = NULL;
+
+    fileCount = odroid_sdcard_files_get(path, ".fw", &files);
+    printf("%s: fileCount=%d\n", __func__, fileCount);
+
+    // At least one firmware must be available
+    if (fileCount < 1)
+    {
+        uint16_t err_id = TXB_ID_0 + (ITEM_COUNT / 2) - 1;
+        UG_TextboxSetForeColor(&window1, err_id, C_RED);
+        UG_TextboxSetText(&window1, err_id, "NO FIRMWARE ERROR");
+        UpdateDisplay();
+
+        indicate_error();
+    }
+
+
+    // Selection
+    int currentItem = 0;
+    DrawPage(files, fileCount, currentItem);
+
+    odroid_gamepad_state previousState;
+    input_read(&previousState);
+
+    while (true)
+    {
+		odroid_gamepad_state state;
+		input_read(&state);
+
+        int page = currentItem / 10;
+        page *= 10;
+
+		if (fileCount > 0)
+		{
+	        if(!previousState.values[ODROID_INPUT_DOWN] && state.values[ODROID_INPUT_DOWN])
+	        {
+	            if (fileCount > 0)
+				{
+					if (currentItem + 1 < fileCount)
+		            {
+		                ++currentItem;
+		                DrawPage(files, fileCount, currentItem);
+		            }
+					else
+					{
+						currentItem = 0;
+		                DrawPage(files, fileCount, currentItem);
+					}
+				}
+	        }
+	        else if(!previousState.values[ODROID_INPUT_UP] && state.values[ODROID_INPUT_UP])
+	        {
+	            if (fileCount > 0)
+				{
+					if (currentItem > 0)
+		            {
+		                --currentItem;
+		                DrawPage(files, fileCount, currentItem);
+		            }
+					else
+					{
+						currentItem = fileCount - 1;
+						DrawPage(files, fileCount, currentItem);
+					}
+				}
+	        }
+	        else if(!previousState.values[ODROID_INPUT_RIGHT] && state.values[ODROID_INPUT_RIGHT])
+	        {
+	            if (fileCount > 0)
+				{
+					if (page + 10 < fileCount)
+		            {
+		                currentItem = page + 10;
+		                DrawPage(files, fileCount, currentItem);
+		            }
+					else
+					{
+						currentItem = 0;
+						DrawPage(files, fileCount, currentItem);
+					}
+				}
+	        }
+	        else if(!previousState.values[ODROID_INPUT_LEFT] && state.values[ODROID_INPUT_LEFT])
+	        {
+	            if (fileCount > 0)
+				{
+					if (page - 10 >= 0)
+		            {
+		                currentItem = page - 10;
+		                DrawPage(files, fileCount, currentItem);
+		            }
+					else
+					{
+						currentItem = page;
+						while (currentItem + 10 < fileCount)
+						{
+							currentItem += 10;
+						}
+
+		                DrawPage(files, fileCount, currentItem);
+					}
+				}
+	        }
+	        else if(!previousState.values[ODROID_INPUT_A] && state.values[ODROID_INPUT_A])
+	        {
+	            size_t fullPathLength = strlen(path) + 1 + strlen(files[currentItem]) + 1;
+
+	            char* fullPath = (char*)malloc(fullPathLength);
+	            if (!fullPath) abort();
+
+	            strcpy(fullPath, path);
+	            strcat(fullPath, "/");
+	            strcat(fullPath, files[currentItem]);
+
+	            result = fullPath;
+                break;
+	        }
+            else if (!previousState.values[ODROID_INPUT_MENU] && state.values[ODROID_INPUT_MENU])
+            {
+                ClearScreen();
+                DisplayMessage("Exiting ...");
+                UpdateDisplay();
+
+                boot_application();
+
+                // should not reach
+                abort();
+            }
+		}
+
+        previousState = state;
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+
+    odroid_sdcard_files_free(files, fileCount);
+
+    return result;
+}
+
+static void menu_main()
+{
+    sprintf(tempstring,"Ver: %s-%s", COMPILEDATE, GITREV);
+
+    UG_WindowCreate(&window1, objbuffwnd1, MAX_OBJECTS, window1callback);
+
+    UG_WindowSetTitleText(&window1, "ODROID-GO");
+    UG_WindowSetTitleTextFont(&window1, &FONT_10X16);
+    UG_WindowSetTitleTextAlignment(&window1, ALIGN_CENTER);
+
+    UG_S16 innerWidth = UG_WindowGetInnerWidth(&window1);
+    UG_S16 innerHeight = UG_WindowGetInnerHeight(&window1);
+    UG_S16 titleHeight = UG_WindowGetTitleHeight(&window1);
+    float textHeight = (float)(innerHeight) / (ITEM_COUNT + 2);
+
+    //UG_U16 header_id = TXB_ID_0 + ITEM_COUNT;
+    // UG_TextboxCreate(&window1, &header_textbox, header_id,
+    //     0, 0,
+    //     innerWidth, textHeight - 1);
+    // UG_TextboxSetBackColor(&window1, header_id, C_GREEN);
+    // UG_TextboxSetFont(&window1, header_id, &FONT_8X8);
+    // UG_TextboxSetText(&window1, header_id, "Header Line");
+
+    UG_U16 footer_id = TXB_ID_0 + ITEM_COUNT + 1;
+    UG_S16 footer_top = innerHeight - textHeight;
+    UG_TextboxCreate(&window1, &footer_textbox, footer_id,
+        0, footer_top,
+        innerWidth, footer_top + textHeight - 1);
+    UG_TextboxSetFont(&window1, footer_id, &FONT_8X8);
+    UG_TextboxSetForeColor(&window1, footer_id, C_DARK_GRAY);
+    UG_TextboxSetBackColor(&window1, footer_id, C_BLACK);
+    UG_TextboxSetAlignment(&window1, footer_id, ALIGN_CENTER);
+    UG_TextboxSetText(&window1, footer_id, tempstring);
+
+
+    for (int i = 0; i < ITEM_COUNT; ++i)
+    {
+        uint16_t id = TXB_ID_0 + i;
+        UG_S16 top = (i) * textHeight + (textHeight / 2);
+        UG_TextboxCreate(&window1, &item_textbox[i], id, 0, top, innerWidth, top + textHeight - 1);
+        UG_TextboxSetFont(&window1, id, &FONT_8X12);
+        //UG_TextboxSetForeColor(&window1, id, C_WHITE);
+        UG_TextboxSetAlignment(&window1, id, ALIGN_CENTER);
+        UG_TextboxSetText(&window1, id, "");
+    }
+
+
+    UG_WindowShow(&window1);
+    UpdateDisplay();
+
+
+    // Check SD card
+    esp_err_t ret = odroid_sdcard_open(SD_CARD);
+    if (ret != ESP_OK)
+    {
+        DisplayError("SD CARD ERROR");
+        indicate_error();
+    }
+
+
+    // Check for /odroid/firmware
+    const char* path = "/sd/odroid/firmware";
+
+    const char* fileName = menu_choose_file(path);
+    if (!fileName) abort();
+
+    printf("%s: fileName='%s'\n", __func__, fileName);
+
+    flash_firmware(fileName);
+}
+
+
+void app_main(void)
+{
+    nvs_flash_init();
+
+    input_init();
+
+
+    // turn LED on
+    gpio_set_direction(GPIO_NUM_2, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NUM_2, 1);
+
+
+    ili9341_init();
+    ili9341_clear(0x0000);
+
+    UG_Init(&gui, pset, 320, 240);
+    menu_main();
+
+
+    while(1)
+    {
+        vTaskDelay(1);
     }
 
     indicate_error();
