@@ -4,18 +4,33 @@
 #include <stdint.h>
 
 
-const char* FIRMWARE = "firmware.bin";
-const char* HEADER = "ODROIDGO_FIRMWARE_V00_00";
+const char* FIRMWARE = "firmware.fw";
+const char* HEADER = "ODROIDGO_FIRMWARE_V00_01";
 
 #define FIRMWARE_DESCRIPTION_SIZE (40)
 char FirmwareDescription[FIRMWARE_DESCRIPTION_SIZE];
+
+
+// TODO: packed
+typedef struct
+{
+    uint8_t type;
+    uint8_t subtype;
+    uint8_t _reserved0;
+    uint8_t _reserved1;
+
+    uint8_t label[16];
+
+    uint32_t flags;
+    uint32_t length;
+} odroid_partition_t;
 
 
 int main(int argc, char *argv[])
 {
     if (argc < 4)
     {
-        printf("usage: %s description slot binary [slot binary]\n", argv[0]);
+        printf("usage: %s description type subtype length label binary [...]\n", argv[0]);
     }
     else
     {
@@ -34,13 +49,24 @@ int main(int argc, char *argv[])
         count = fwrite(FirmwareDescription, FIRMWARE_DESCRIPTION_SIZE, 1, file);
         printf("FirmwareDescription='%s'\n", FirmwareDescription);
 
+        int part_count = 0;
         int i = 2;
         while (i < argc)
         {
-            uint32_t slot = atoi(argv[i++]);
+            odroid_partition_t part = {0};
+
+
+            part.type = atoi(argv[i++]);
+            part.subtype = atoi(argv[i++]);
+            part.length = atoi(argv[i++]);
+
+            const char* label = argv[i++];
+            strncpy(part.label, label, sizeof(part.label));
+
+            printf("[%d] type=%d, subtype=%d, length=%d, label=%-16s\n",
+                part_count, part.type, part.subtype, part.length, part.label);
+
             const char* filename = argv[i++];
-
-
 
             FILE* binary = fopen(filename, "rb");
             if (!binary) abort();
@@ -64,7 +90,7 @@ int main(int argc, char *argv[])
             fclose(binary);
 
             // write the entry
-            fwrite(&slot, sizeof(slot), 1, file);
+            fwrite(&part, sizeof(part), 1, file);
 
             uint32_t length = (uint32_t)fileSize;
             fwrite(&length, sizeof(length), 1, file);
@@ -72,7 +98,9 @@ int main(int argc, char *argv[])
             fwrite(data, fileSize, 1, file);
             free(data);
 
-            printf("slot=%d, length=%d, data=%s\n", slot, length, filename);
+            printf("part=%d, length=%d, data=%s\n", part_count, length, filename);
+
+            part_count++;
         }
 
         fclose(file);

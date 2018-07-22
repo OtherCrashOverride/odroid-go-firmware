@@ -1,6 +1,5 @@
 build/
 sdkconfig.old
-firmware.bin
-makefirmware
+firmware.fw
 *.gch
 

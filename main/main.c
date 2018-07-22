@@ -8,6 +8,7 @@
 #include "esp_partition.h"
 #include "esp_ota_ops.h"
 #include "esp_heap_caps.h"
+#include "esp_flash_data_types.h"
 
 #include <string.h>
 
@@ -19,10 +20,31 @@
 
 
 const char* SD_CARD = "/sd";
-const char* HEADER = "ODROIDGO_FIRMWARE_V00_00";
+//const char* HEADER = "ODROIDGO_FIRMWARE_V00_00";
+const char* HEADER_V00_01 = "ODROIDGO_FIRMWARE_V00_01";
 
 #define FIRMWARE_DESCRIPTION_SIZE (40)
 char FirmwareDescription[FIRMWARE_DESCRIPTION_SIZE];
+
+// <partition type=0x00 subtype=0x00 label='name' flags=0x00000000 length=0x00000000>
+// 	<data length=0x00000000>
+// 		[...]
+// 	</data>
+// </partition>
+typedef struct
+{
+    uint8_t type;
+    uint8_t subtype;
+    uint8_t _reserved0;
+    uint8_t _reserved1;
+
+    uint8_t label[16];
+
+    uint32_t flags;
+    uint32_t length;
+} odroid_partition_t;
+
+// ------
 
 uint16_t fb[320 * 240];
 UG_GUI gui;
@@ -129,6 +151,143 @@ void boot_application()
     }
 }
 
+
+#define ESP_PARTITION_TABLE_OFFSET CONFIG_PARTITION_TABLE_OFFSET /* Offset of partition table. Backwards-compatible name.*/
+#define ESP_PARTITION_TABLE_MAX_LEN 0xC00 /* Maximum length of partition table data */
+#define ESP_PARTITION_TABLE_MAX_ENTRIES (ESP_PARTITION_TABLE_MAX_LEN / sizeof(esp_partition_info_t)) /* Maximum length of partition table data, including terminating entry */
+
+#define PART_TYPE_APP 0x00
+#define PART_SUBTYPE_FACTORY 0x00
+
+static void print_partitions()
+{
+    const esp_partition_info_t* partition_data = (const esp_partition_info_t*)malloc(ESP_PARTITION_TABLE_MAX_LEN);
+    if (!partition_data) abort();
+
+    esp_err_t err;
+
+    err = spi_flash_read(ESP_PARTITION_TABLE_OFFSET, (void*)partition_data, ESP_PARTITION_TABLE_MAX_LEN);
+    if (err != ESP_OK) abort();
+
+    for (int i = 0; i < ESP_PARTITION_TABLE_MAX_ENTRIES; ++i)
+    {
+        const esp_partition_info_t *part = &partition_data[i];
+        if (part->magic == 0xffff) break;
+
+        printf("part %d:\n", i);
+
+
+        printf("\tmagic=%#06x\n", part->magic);
+        printf("\ttype=%#04x\n", part->type);
+        printf("\tsubtype=%#04x\n", part->subtype);
+        printf("\t[pos.offset=%#010x, pos.size=%#010x]\n", part->pos.offset, part->pos.size);
+        printf("\tlabel='%-16s'\n", part->label);
+        printf("\tflags=%#010x\n", part->flags);
+        printf("\n");
+    }
+
+}
+
+static void write_partition_table(odroid_partition_t* parts, size_t parts_count)
+{
+    esp_err_t err;
+
+
+    // Read table
+    const esp_partition_info_t* partition_data = (const esp_partition_info_t*)malloc(ESP_PARTITION_TABLE_MAX_LEN);
+    if (!partition_data)
+    {
+        DisplayError("TABLE MEMORY ERROR");
+        indicate_error();
+    }
+
+    err = spi_flash_read(ESP_PARTITION_TABLE_OFFSET, (void*)partition_data, ESP_PARTITION_TABLE_MAX_LEN);
+    if (err != ESP_OK)
+    {
+        DisplayError("TABLE READ ERROR");
+        indicate_error();
+    }
+
+    // Find end of first partitioned
+    int startTableEntry = -1;
+    size_t startFlashAddress = 0xffffffff;
+
+    for (int i = 0; i < ESP_PARTITION_TABLE_MAX_ENTRIES; ++i)
+    {
+        const esp_partition_info_t *part = &partition_data[i];
+        if (part->magic == 0xffff) break;
+
+        if (part->magic == ESP_PARTITION_MAGIC)
+        {
+            if (part->type == PART_TYPE_APP &&
+                part->subtype == PART_SUBTYPE_FACTORY)
+            {
+                startTableEntry = i + 1;
+                startFlashAddress = part->pos.offset + part->pos.size;
+                break;
+            }
+        }
+    }
+
+    if (startTableEntry < 0)
+    {
+        DisplayError("NO FACTORY PARTITION ERROR");
+        indicate_error();
+    }
+
+    printf("%s: startTableEntry=%d, startFlashAddress=%#08x\n",
+        __func__, startTableEntry, startFlashAddress);
+
+    // blank partition table entries
+    for (int i = startTableEntry; i < ESP_PARTITION_TABLE_MAX_ENTRIES; ++i)
+    {
+        memset(&partition_data[i], 0xff, sizeof(esp_partition_info_t));
+    }
+
+    // Add partitions
+    size_t offset = 0;
+    for (int i = 0; i < parts_count; ++i)
+    {
+        esp_partition_info_t* part = &partition_data[startTableEntry + i];
+        part->magic = ESP_PARTITION_MAGIC;
+        part->type = parts[i].type;
+        part->subtype = parts[i].subtype;
+        part->pos.offset = startFlashAddress + offset;
+        part->pos.size = parts[i].length;
+        for (int j = 0; j < 16; ++j)
+        {
+            part->label[j] = parts[i].label[j];
+        }
+        part->flags = parts[i].flags;
+
+        offset += parts[i].length;
+    }
+
+    //abort();
+
+    // Erase partition table
+    if (ESP_PARTITION_TABLE_MAX_LEN > 4096)
+    {
+        DisplayError("TABLE SIZE ERROR");
+        indicate_error();
+    }
+
+    err = spi_flash_erase_range(ESP_PARTITION_TABLE_OFFSET, 4096);
+    if (err != ESP_OK)
+    {
+        DisplayError("TABLE ERASE ERROR");
+        indicate_error();
+    }
+
+    // Write new table
+    err = spi_flash_write(ESP_PARTITION_TABLE_OFFSET, (void*)partition_data, ESP_PARTITION_TABLE_MAX_LEN);
+    if (err != ESP_OK)
+    {
+        DisplayError("TABLE WRITE ERROR");
+        indicate_error();
+    }
+}
+
 void flash_firmware(const char* fullPath)
 {
     ClearScreen();
@@ -145,7 +304,7 @@ void flash_firmware(const char* fullPath)
     }
 
     // Check the header
-    const size_t headerLength = strlen(HEADER);
+    const size_t headerLength = strlen(HEADER_V00_01);
     char* header = malloc(headerLength + 1);
     if(!header)
     {
@@ -163,7 +322,7 @@ void flash_firmware(const char* fullPath)
         indicate_error();
     }
 
-    if (strncmp(HEADER, header, headerLength) != 0)
+    if (strncmp(HEADER_V00_01, header, headerLength) != 0)
     {
         DisplayError("HEADER MATCH ERROR");
         indicate_error();
@@ -190,7 +349,7 @@ void flash_firmware(const char* fullPath)
     UpdateDisplay();
 
     // start to begin, b back
-    DisplayMessage("[Start] = OK, [B] = Cancel");
+    DisplayMessage("[Start] = OK       [B] = Cancel");
     UpdateDisplay();
 
     odroid_gamepad_state previousState;
@@ -218,6 +377,11 @@ void flash_firmware(const char* fullPath)
     DisplayFooter("FLASH START");
     //abort();
 
+
+    // TODO: Dynamically determine from end of 'factory' partition
+    const size_t FLASH_START_ADDRESS = 0x100000;
+
+
     const int ERASE_BLOCK_SIZE = 4096;
     void* data = malloc(ERASE_BLOCK_SIZE);
     if (!data)
@@ -226,29 +390,54 @@ void flash_firmware(const char* fullPath)
         indicate_error();
     }
 
+    const size_t PARTS_MAX = 20;
+    int parts_count = 0;
+    odroid_partition_t* parts = malloc(sizeof(odroid_partition_t) * PARTS_MAX);
+    if (!parts)
+    {
+        DisplayError("PARTITION MEMORY ERROR");
+        indicate_error();
+    }
 
     // Copy the firmware
+    size_t curren_flash_address = FLASH_START_ADDRESS;
+
     while(true)
     {
         // Partition
-        uint32_t slot;
+        odroid_partition_t slot;
         count = fread(&slot, 1, sizeof(slot), file);
         if (count != sizeof(slot))
         {
             break;
         }
 
-        const esp_partition_t* part = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
-            ESP_PARTITION_SUBTYPE_APP_OTA_MIN + slot, NULL);
-        if (part==0)
+        if (parts_count >= PARTS_MAX)
         {
-             printf("esp_partition_find_first failed. slot=%d\n", slot);
-             DisplayError("PARTITION ERROR");
-             indicate_error();
+            DisplayError("PARTITION COUNT ERROR");
+            indicate_error();
+        }
+
+        if (slot.type == 0xff)
+        {
+            DisplayError("PARTITION TYPE ERROR");
+            indicate_error();
+        }
+
+        if (curren_flash_address + slot.length > 16 * 1024 * 1024)
+        {
+            DisplayError("PARTITION LENGTH ERROR");
+            indicate_error();
+        }
+
+        if ((curren_flash_address & 0xffff0000) != curren_flash_address)
+        {
+            DisplayError("PARTITION LENGTH ALIGNMENT ERROR");
+            indicate_error();
         }
 
 
-        // Length
+        // Data Length
         uint32_t length;
         count = fread(&length, 1, sizeof(length), file);
         if (count != sizeof(length))
@@ -257,92 +446,108 @@ void flash_firmware(const char* fullPath)
             indicate_error();
         }
 
-        size_t nextEntry = ftell(file) + length;
-
-
-        // turn LED off
-        gpio_set_level(GPIO_NUM_2, 0);
-
-
-        // erase
-        int eraseBlocks = length / ERASE_BLOCK_SIZE;
-        if (eraseBlocks * ERASE_BLOCK_SIZE < length) ++eraseBlocks;
-
-        // Display
-        sprintf(tempstring, "ERASE: [%d] BLOCKS=%#04x", slot, eraseBlocks);
-
-        printf("%s\n", tempstring);
-        DisplayMessage(tempstring);
-
-        esp_err_t ret = esp_partition_erase_range(part, 0, eraseBlocks * ERASE_BLOCK_SIZE);
-        if (ret != ESP_OK)
+        if (length > slot.length)
         {
-            printf("esp_partition_erase_range failed. eraseBlocks=%d\n", eraseBlocks);
-            DisplayError("ERASE ERROR");
+            printf("%s: data length error - length=%x, slot.length=%x\n",
+                __func__, length, slot.length);
+
+            DisplayError("DATA LENGTH ERROR");
             indicate_error();
         }
 
-        // turn LED on
-        gpio_set_level(GPIO_NUM_2, 1);
+        size_t nextEntry = ftell(file) + length;
 
-
-        // Write data
-        int totalCount = 0;
-        for (int offset = 0; offset < length; offset += ERASE_BLOCK_SIZE)
+        if (length > 0)
         {
+            // turn LED off
+            gpio_set_level(GPIO_NUM_2, 0);
+
+
+            // erase
+            int eraseBlocks = length / ERASE_BLOCK_SIZE;
+            if (eraseBlocks * ERASE_BLOCK_SIZE < length) ++eraseBlocks;
+
             // Display
-            sprintf(tempstring, "WRITE: [%d] %#08x", slot, offset);
+            sprintf(tempstring, "ERASE: [%d] BLOCKS=%#04x", parts_count, eraseBlocks);
 
             printf("%s\n", tempstring);
             DisplayMessage(tempstring);
 
-
-            // read
-            //printf("Reading offset=0x%x\n", offset);
-            count = fread(data, 1, ERASE_BLOCK_SIZE, file);
-            if (count <= 0)
-            {
-                DisplayError("DATA READ ERROR");
-                indicate_error();
-            }
-
-            if (offset + count >= length)
-            {
-                count = length - offset;
-            }
-
-
-            // flash
-            //printf("Writing offset=0x%x\n", offset);
-            ret = esp_partition_write(part, offset, data, count);
+            esp_err_t ret = spi_flash_erase_range(curren_flash_address, eraseBlocks * ERASE_BLOCK_SIZE);
             if (ret != ESP_OK)
-    		{
-    			printf("esp_partition_write failed.\n");
-                DisplayError("WRITE ERROR");
+            {
+                printf("spi_flash_erase_range failed. eraseBlocks=%d\n", eraseBlocks);
+                DisplayError("ERASE ERROR");
                 indicate_error();
-    		}
+            }
 
-            totalCount += count;
+
+            // turn LED on
+            gpio_set_level(GPIO_NUM_2, 1);
+
+
+            // Write data
+            int totalCount = 0;
+            for (int offset = 0; offset < length; offset += ERASE_BLOCK_SIZE)
+            {
+                // Display
+                sprintf(tempstring, "WRITE: [%d] %#08x", parts_count, offset);
+
+                printf("%s\n", tempstring);
+                DisplayMessage(tempstring);
+
+
+                // read
+                //printf("Reading offset=0x%x\n", offset);
+                count = fread(data, 1, ERASE_BLOCK_SIZE, file);
+                if (count <= 0)
+                {
+                    DisplayError("DATA READ ERROR");
+                    indicate_error();
+                }
+
+                if (offset + count >= length)
+                {
+                    count = length - offset;
+                }
+
+
+                // flash
+                //printf("Writing offset=0x%x\n", offset);
+                //ret = esp_partition_write(part, offset, data, count);
+                ret = spi_flash_write(curren_flash_address + offset, data, count);
+                if (ret != ESP_OK)
+        		{
+        			printf("spi_flash_write failed. address=%#08x\n", curren_flash_address + offset);
+                    DisplayError("WRITE ERROR");
+                    indicate_error();
+        		}
+
+                totalCount += count;
+            }
+
+            if (totalCount != length)
+            {
+                printf("Size mismatch: lenght=%#08x, totalCount=%#08x\n", length, totalCount);
+                DisplayError("DATA SIZE ERROR");
+                indicate_error();
+            }
+
+
+            // TODO: verify
+
+
+
+
+            // Notify OK
+            sprintf(tempstring, "OK: [%d] Length=%#08x", parts_count, length);
+
+            printf("%s\n", tempstring);
+            DisplayFooter(tempstring);
         }
 
-        if (totalCount != length)
-        {
-            printf("Size mismatch: lenght=%#08x, totalCount=%#08x\n", length, totalCount);
-            DisplayError("DATA SIZE ERROR");
-            indicate_error();
-        }
-
-
-        // TODO: verify
-
-
-
-
-        // Notify OK
-        sprintf(tempstring, "OK: [%d] Length=%#08x", slot, length);
-
-        printf("%s\n", tempstring);
-        DisplayFooter(tempstring);
+        parts[parts_count++] = slot;
+        curren_flash_address += slot.length;
 
 
         // Seek to next entry
@@ -351,14 +556,19 @@ void flash_firmware(const char* fullPath)
             DisplayError("SEEK ERROR");
             indicate_error();
         }
+
     }
+
+
+    // Write partition table
+    write_partition_table(parts, parts_count);
 
 
     free(data);
 
     // Close SD card
     odroid_sdcard_close();
-    
+
     // turn LED off
     gpio_set_level(GPIO_NUM_2, 0);
 
@@ -610,7 +820,7 @@ static void menu_main()
     UG_TextboxCreate(&window1, &footer_textbox, footer_id,
         0, footer_top,
         innerWidth, footer_top + textHeight - 1);
-    UG_TextboxSetFont(&window1, footer_id, &FONT_8X8);
+    UG_TextboxSetFont(&window1, footer_id, &FONT_8X12);
     UG_TextboxSetForeColor(&window1, footer_id, C_DARK_GRAY);
     UG_TextboxSetBackColor(&window1, footer_id, C_BLACK);
     UG_TextboxSetAlignment(&window1, footer_id, ALIGN_CENTER);
@@ -659,8 +869,13 @@ static void menu_main()
 }
 
 
+
+
+
 void app_main(void)
 {
+    //print_partitions();
+
     nvs_flash_init();
 
     input_init();
