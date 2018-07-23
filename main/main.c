@@ -378,8 +378,19 @@ void flash_firmware(const char* fullPath)
     //abort();
 
 
-    // TODO: Dynamically determine from end of 'factory' partition
-    const size_t FLASH_START_ADDRESS = 0x100000;
+    // Determine start address from end of 'factory' partition
+    const esp_partition_t* factory_part = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
+            ESP_PARTITION_SUBTYPE_APP_FACTORY, NULL);
+    if (factory_part == NULL)
+    {
+         printf("esp_partition_find_first failed. (FACTORY)\n");
+
+         DisplayError("FACTORY PARTITION ERROR");
+         indicate_error();
+    }
+
+    const size_t FLASH_START_ADDRESS = factory_part->address + factory_part->size;
+    printf("%s: FLASH_START_ADDRESS=%#010x\n", __func__, FLASH_START_ADDRESS);
 
 
     const int ERASE_BLOCK_SIZE = 4096;
