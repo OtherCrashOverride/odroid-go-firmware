@@ -9,6 +9,7 @@
 #include "esp_ota_ops.h"
 #include "esp_heap_caps.h"
 #include "esp_flash_data_types.h"
+#include "rom/crc.h"
 
 #include <string.h>
 
@@ -290,6 +291,9 @@ static void write_partition_table(odroid_partition_t* parts, size_t parts_count)
 
 void flash_firmware(const char* fullPath)
 {
+    size_t count;
+
+
     ClearScreen();
     UpdateDisplay();
 
@@ -315,7 +319,7 @@ void flash_firmware(const char* fullPath)
     // null terminate
     memset(header, 0, headerLength + 1);
 
-    size_t count = fread(header, 1, headerLength, file);
+    count = fread(header, 1, headerLength, file);
     if (count != headerLength)
     {
         DisplayError("HEADER READ ERROR");
@@ -374,8 +378,68 @@ void flash_firmware(const char* fullPath)
     DisplayMessage("");
     UpdateDisplay();
 
-    DisplayFooter("FLASH START");
-    //abort();
+
+    DisplayMessage("VERIFY");
+
+
+    const int ERASE_BLOCK_SIZE = 4096;
+    void* data = malloc(ERASE_BLOCK_SIZE);
+    if (!data)
+    {
+        DisplayError("DATA MEMORY ERROR");
+        indicate_error();
+    }
+
+
+    // Verify file integerity
+    size_t current_position = ftell(file);
+
+
+    fseek(file, 0, SEEK_END);
+    size_t file_size = ftell(file);
+
+
+    uint32_t expected_checksum;
+    fseek(file, file_size - sizeof(expected_checksum), SEEK_SET);
+    count = fread(&expected_checksum, 1, sizeof(expected_checksum), file);
+    if (count != sizeof(expected_checksum))
+    {
+        DisplayError("CHECKSUM READ ERROR");
+        indicate_error();
+    }
+    printf("%s: expected_checksum=%#010x\n", __func__, expected_checksum);
+
+
+    fseek(file, 0, SEEK_SET);
+
+    uint32_t checksum = 0;
+    size_t check_offset = 0;
+    while(true)
+    {
+        count = fread(data, 1, ERASE_BLOCK_SIZE, file);
+        if (check_offset + count == file_size)
+        {
+            count -= 4;
+        }
+
+        checksum = crc32_le(checksum, data, count);
+        check_offset += count;
+
+        if (count < ERASE_BLOCK_SIZE) break;
+    }
+
+    printf("%s: checksum=%#010x\n", __func__, checksum);
+
+    if (checksum != expected_checksum)
+    {
+        DisplayError("CHECKSUM MISMATCH ERROR");
+        indicate_error();
+    }
+
+    // restore location to end of description
+    fseek(file, current_position, SEEK_SET);
+
+    //while(1) vTaskDelay(1);
 
 
     // Determine start address from end of 'factory' partition
@@ -393,14 +457,6 @@ void flash_firmware(const char* fullPath)
     printf("%s: FLASH_START_ADDRESS=%#010x\n", __func__, FLASH_START_ADDRESS);
 
 
-    const int ERASE_BLOCK_SIZE = 4096;
-    void* data = malloc(ERASE_BLOCK_SIZE);
-    if (!data)
-    {
-        DisplayError("DATA MEMORY ERROR");
-        indicate_error();
-    }
-
     const size_t PARTS_MAX = 20;
     int parts_count = 0;
     odroid_partition_t* parts = malloc(sizeof(odroid_partition_t) * PARTS_MAX);
@@ -415,12 +471,18 @@ void flash_firmware(const char* fullPath)
 
     while(true)
     {
+        if (ftell(file) >= (file_size - sizeof(checksum)))
+        {
+            break;
+        }
+
         // Partition
         odroid_partition_t slot;
         count = fread(&slot, 1, sizeof(slot), file);
         if (count != sizeof(slot))
         {
-            break;
+            DisplayError("PARTITION READ ERROR");
+            indicate_error();
         }
 
         if (parts_count >= PARTS_MAX)

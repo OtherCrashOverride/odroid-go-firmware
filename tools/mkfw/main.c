@@ -3,6 +3,8 @@
 #include <string.h>
 #include <stdint.h>
 
+extern unsigned long crc32(unsigned long crc, const unsigned char* buf, unsigned int len);
+
 
 const char* FIRMWARE = "firmware.fw";
 const char* HEADER = "ODROIDGO_FIRMWARE_V00_01";
@@ -103,6 +105,31 @@ int main(int argc, char *argv[])
             part_count++;
         }
 
+        fclose(file);
+
+        // calculate checksum
+        file = fopen(FIRMWARE, "ab+");
+        if (!file) abort();
+
+        fseek(file, 0, SEEK_END);
+        size_t file_size = ftell(file);
+        fseek(file, 0, SEEK_SET);
+
+        const size_t BLOCK_SIZE = 4096;
+
+        void* data = malloc(BLOCK_SIZE);
+        if (!data) abort();
+
+        uint32_t checksum = 0;
+        for(int i = 0; i < (file_size); i += BLOCK_SIZE)
+        {
+            count = fread(data, 1, BLOCK_SIZE, file);
+            checksum = crc32(checksum, data, count);
+        }
+
+        printf("%s: checksum=%#010x\n", __func__, checksum);
+
+        fwrite(&checksum, sizeof(checksum), 1, file);
         fclose(file);
     }
 
