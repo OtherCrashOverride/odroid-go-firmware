@@ -353,7 +353,8 @@ void flash_firmware(const char* fullPath)
     UpdateDisplay();
 
     // start to begin, b back
-    DisplayMessage("[Start] = OK       [B] = Cancel");
+    DisplayMessage("");
+    DisplayFooter("[B] Cancel      [Start] OK");
     UpdateDisplay();
 
     odroid_gamepad_state previousState;
@@ -376,6 +377,7 @@ void flash_firmware(const char* fullPath)
     }
 
     DisplayMessage("");
+    DisplayFooter("");
     UpdateDisplay();
 
 
