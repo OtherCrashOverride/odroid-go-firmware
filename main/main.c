@@ -51,18 +51,18 @@ uint16_t fb[320 * 240];
 UG_GUI gui;
 char tempstring[1024];
 
-#define MAX_OBJECTS (20)
-#define ITEM_COUNT (10)
-
-UG_WINDOW window1;
-UG_TEXTBOX item_textbox[ITEM_COUNT];
-UG_TEXTBOX header_textbox;
-UG_TEXTBOX footer_textbox;
-UG_OBJECT objbuffwnd1[MAX_OBJECTS];
+#define ITEM_COUNT (4)
+char** files;
+int fileCount;
+const char* path = "/sd/odroid/firmware";
 
 
+#define TILE_WIDTH (86)
+#define TILE_HEIGHT (48)
+#define TILE_LENGTH (TILE_WIDTH * TILE_HEIGHT * 2)
 
-static void indicate_error()
+
+void indicate_error()
 {
     int level = 0;
     while (true) {
@@ -77,62 +77,139 @@ static void pset(UG_S16 x, UG_S16 y, UG_COLOR color)
     fb[y * 320 + x] = color;
 }
 
-static void window1callback(UG_MESSAGE* msg)
+static void ui_update_display()
+{
+    ili9341_write_frame_rectangleLE(0, 0, 320, 240, fb);
+}
+
+static void ui_draw_image(short x, short y, short width, short height, uint16_t* data)
+{
+    for (short i = 0 ; i < height; ++i)
+    {
+        for (short j = 0; j < width; ++j)
+        {
+            uint16_t pixel = data[i * width + j];
+            UG_DrawPixel(x + j, y + i, pixel);
+        }
+    }
+}
+
+// TODO: default bad image tile
+void ui_firmware_image_get(const char* filename, uint16_t* outData)
+{
+    //printf("%s: filename='%s'\n", __func__, filename);
+
+    FILE* file = fopen(filename, "rb");
+    if (!file) abort();
+
+    // Check the header
+    const size_t headerLength = strlen(HEADER_V00_01);
+    char* header = malloc(headerLength + 1);
+    if(!header)
+    {
+        //DisplayError("MEMORY ERROR");
+        //indicate_error();
+        abort();
+    }
+
+    // null terminate
+    memset(header, 0, headerLength + 1);
+
+    size_t count = fread(header, 1, headerLength, file);
+    if (count != headerLength)
+    {
+        //DisplayError("HEADER READ ERROR");
+        //indicate_error();
+        abort();
+    }
+
+    if (strncmp(HEADER_V00_01, header, headerLength) != 0)
+    {
+        //DisplayError("HEADER MATCH ERROR");
+        //indicate_error();
+        abort();
+    }
+
+    //printf("Header OK: '%s'\n", header);
+
+    // read description
+    count = fread(FirmwareDescription, 1, FIRMWARE_DESCRIPTION_SIZE, file);
+    if (count != FIRMWARE_DESCRIPTION_SIZE)
+    {
+        //DisplayError("DESCRIPTION READ ERROR");
+        //indicate_error();
+        abort();
+    }
+
+    // read tile
+    count = fread(outData, 1, TILE_LENGTH, file);
+    if (count != TILE_LENGTH) abort();
+
+    fclose(file);
+}
+
+static void ClearScreen()
 {
 }
 
 static void UpdateDisplay()
 {
-    UG_Update();
-    ili9341_write_frame_rectangleLE(0, 0, 320, 240, fb);
-}
-
-static void ClearScreen()
-{
-    // Clear screen
-    for (int i = 0; i < ITEM_COUNT; ++i)
-    {
-        uint16_t id = TXB_ID_0 + i;
-        UG_TextboxSetForeColor(&window1, id, C_BLACK);
-        UG_TextboxSetBackColor(&window1, id, C_WHITE);
-        UG_TextboxSetText(&window1, id, "");
-    }
+    ui_update_display();
 }
 
 static void DisplayError(const char* message)
 {
-    // for (int i = 0; i < ITEM_COUNT; ++i)
-    // {
-    //     uint16_t id = TXB_ID_0 + i;
-    //     UG_TextboxSetForeColor(&window1, id, C_BLACK);
-    //     UG_TextboxSetBackColor(&window1, id, C_WHITE);
-    //     UG_TextboxSetText(&window1, id, "");
-    // }
-
-    uint16_t err_id = TXB_ID_0 + (ITEM_COUNT / 2) - 1;
-    UG_TextboxSetForeColor(&window1, err_id, C_RED);
-    UG_TextboxSetText(&window1, err_id, message);
+    UG_FontSelect(&FONT_8X12);
+    short left = (320 / 2) - (strlen(message) * 9 / 2);
+    short top = (240 / 2) - (12 / 2);
+    UG_SetForecolor(C_RED);
+    UG_SetBackcolor(C_WHITE);
+    UG_FillFrame(0, top, 319, top + 12, C_WHITE);
+    UG_PutString(left, top, message);
 
     UpdateDisplay();
 }
 
 static void DisplayMessage(const char* message)
 {
-    uint16_t id = TXB_ID_0 + (ITEM_COUNT / 2) - 1;
-    UG_TextboxSetForeColor(&window1, id, C_BLACK);
-    UG_TextboxSetText(&window1, id, message);
+    UG_FontSelect(&FONT_8X12);
+    short left = (320 / 2) - (strlen(message) * 9 / 2);
+    short top = (240 / 2) - (12 / 2);
+    UG_SetForecolor(C_BLACK);
+    UG_SetBackcolor(C_WHITE);
+    UG_FillFrame(0, top, 319, top + 12, C_WHITE);
+    UG_PutString(left, top, message);
 
     UpdateDisplay();
 }
 
 static void DisplayFooter(const char* message)
 {
-    uint16_t id = TXB_ID_0 + (ITEM_COUNT) - 1;
-    UG_TextboxSetForeColor(&window1, id, C_BLACK);
-    UG_TextboxSetText(&window1, id, message);
+    UG_FontSelect(&FONT_8X12);
+    short left = (320 / 2) - (strlen(message) * 9 / 2);
+    short top = 240 - (16 * 2) - 8;
+    UG_SetForecolor(C_BLACK);
+    UG_SetBackcolor(C_WHITE);
+    UG_FillFrame(0, top, 319, top + 12, C_WHITE);
+    UG_PutString(left, top, message);
 
     UpdateDisplay();
 }
+
+static void DisplayHeader(const char* message)
+{
+    UG_FontSelect(&FONT_8X12);
+    short left = (320 / 2) - (strlen(message) * 9 / 2);
+    short top = (16 + 8);
+    UG_SetForecolor(C_BLACK);
+    UG_SetBackcolor(C_WHITE);
+    UG_FillFrame(0, top, 319, top + 12, C_WHITE);
+    UG_PutString(left, top, message);
+
+    UpdateDisplay();
+}
+
+
 //---------------
 void boot_application()
 {
@@ -289,13 +366,18 @@ static void write_partition_table(odroid_partition_t* parts, size_t parts_count)
     }
 }
 
+
+static void ui_draw_title();
+
+//uint8_t tileData[TILE_LENGTH];
+
 void flash_firmware(const char* fullPath)
 {
     size_t count;
 
 
-    ClearScreen();
-    UpdateDisplay();
+    ui_draw_title();
+    ui_update_display();
 
 
     printf("Opening file '%s'.\n", fullPath);
@@ -349,13 +431,34 @@ void flash_firmware(const char* fullPath)
 
     //DisplayMessage(FirmwareDescription);
     //DisplayFooter("[Start]");
-    UG_TextboxSetText(&window1, TXB_ID_0, FirmwareDescription);
-    UpdateDisplay();
+    //UG_TextboxSetText(&window1, TXB_ID_0, FirmwareDescription);
+    DisplayHeader(FirmwareDescription);
+    //UpdateDisplay();
+
+    // Tile
+    uint16_t* tileData = malloc(TILE_LENGTH);
+    if (!tileData)
+    {
+        DisplayError("TILE MEMORY ERROR");
+        indicate_error();
+    }
+
+    count = fread(tileData, 1, TILE_LENGTH, file);
+    if (count != TILE_LENGTH)
+    {
+        DisplayError("TILE READ ERROR");
+        indicate_error();
+    }
+
+    ui_draw_image((320 / 2) - (TILE_WIDTH / 2), (16 + 16 + 16),
+        TILE_WIDTH, TILE_HEIGHT, tileData);
+
+    free(tileData);
 
     // start to begin, b back
     DisplayMessage("");
     DisplayFooter("[B] Cancel      [Start] OK");
-    UpdateDisplay();
+    //UpdateDisplay();
 
     odroid_gamepad_state previousState;
     input_read(&previousState);
@@ -370,6 +473,7 @@ void flash_firmware(const char* fullPath)
         }
         else if(!previousState.values[ODROID_INPUT_B] && state.values[ODROID_INPUT_B])
         {
+            fclose(file);
             return;
         }
 
@@ -378,7 +482,7 @@ void flash_firmware(const char* fullPath)
 
     DisplayMessage("");
     DisplayFooter("");
-    UpdateDisplay();
+    //UpdateDisplay();
 
 
     DisplayMessage("VERIFY");
@@ -656,29 +760,67 @@ void flash_firmware(const char* fullPath)
     indicate_error();
 }
 
-void DrawPage(char** files, int fileCount, int currentItem)
+
+
+static void ui_draw_title()
+{
+    const char* TITLE = "ODROID-GO";
+
+    UG_FillFrame(0, 0, 319, 239, C_WHITE);
+
+    // Header
+    UG_FillFrame(0, 0, 319, 15, C_MIDNIGHT_BLUE);
+    UG_FontSelect(&FONT_8X8);
+    short titleLeft = (320 / 2) - (strlen(TITLE) * 8 / 2);
+    UG_SetForecolor(C_WHITE);
+    UG_SetBackcolor(C_MIDNIGHT_BLUE);
+    UG_PutString(titleLeft, 4, TITLE);
+
+    // Footer
+    UG_FillFrame(0, 239 - 16, 319, 239, C_MIDNIGHT_BLUE);
+}
+
+static void ui_draw_page(char** files, int fileCount, int currentItem)
 {
     int page = currentItem / ITEM_COUNT;
     page *= ITEM_COUNT;
 
-    // Reset all text boxes
-    for (int i = 0; i < ITEM_COUNT; ++i)
-    {
-        uint16_t id = TXB_ID_0 + i;
-        UG_TextboxSetText(&window1, id, "");
-    }
+    ui_draw_title();
+
+    const int innerHeight = 240 - (16 * 2); // 208
+    const int itemHeight = innerHeight / ITEM_COUNT; // 52
+
+    const int rightWidth = (213); // 320 * (2.0 / 3.0)
+    const int leftWidth = 320 - rightWidth;
+
+    // Tile width = 85, height = 48 (16:9)
+    const short imageLeft = (leftWidth / 2) - (85 / 2);
+    const short textLeft = 320 - rightWidth;
+
+    // for (int i = 0; i < ITEM_COUNT; ++i)
+    // {
+    //     short top = 16 + (i * itemHeight) - 1;
+    //     //UG_FillFrame(0, top, 319, top + itemHeight - 1, debug[i]);
+    //     UG_FillFrame(0, top + 2, 319, top + itemHeight - 1 - 1, C_LIGHT_GRAY);
+    //
+    //     ui_draw_image(imageLeft, top + 2, image_tile.width, image_tile.height, image_tile.pixel_data);
+    // }
+
 
 	if (fileCount < 1)
 	{
-		const char* text = "(empty)";
+		// const char* text = "(none)";
+        //
+        // uint16_t id = TXB_ID_0 + (ITEM_COUNT / 2);
+        // UG_TextboxSetText(&window1, id, (char*)text);
 
-        uint16_t id = TXB_ID_0 + (ITEM_COUNT / 2);
-        UG_TextboxSetText(&window1, id, (char*)text);
-
-        UpdateDisplay();
+        ui_update_display();
 	}
 	else
 	{
+        uint16_t* tile = malloc(TILE_LENGTH);
+        if (!tile) abort();
+
         char* displayStrings[ITEM_COUNT];
         for(int i = 0; i < ITEM_COUNT; ++i)
         {
@@ -689,17 +831,24 @@ void DrawPage(char** files, int fileCount, int currentItem)
 	    {
 			if (page + line >= fileCount) break;
 
-            uint16_t id = TXB_ID_0 + line;
+            //uint16_t id = TXB_ID_0 + line;
+            short top = 16 + (line * itemHeight) - 1;
 
 	        if ((page) + line == currentItem)
 	        {
-	            UG_TextboxSetForeColor(&window1, id, C_BLACK);
-                UG_TextboxSetBackColor(&window1, id, C_YELLOW);
+	            //UG_TextboxSetForeColor(&window1, id, C_BLACK);
+                //UG_TextboxSetBackColor(&window1, id, C_YELLOW);
+                UG_SetForecolor(C_BLACK);
+                UG_SetBackcolor(C_YELLOW);
+                UG_FillFrame(0, top + 2, 319, top + itemHeight - 1 - 1, C_YELLOW);
 	        }
 	        else
 	        {
-	            UG_TextboxSetForeColor(&window1, id, C_BLACK);
-                UG_TextboxSetBackColor(&window1, id, C_WHITE);
+	            //UG_TextboxSetForeColor(&window1, id, C_BLACK);
+                //UG_TextboxSetBackColor(&window1, id, C_WHITE);
+
+                UG_SetForecolor(C_BLACK);
+                UG_SetBackcolor(C_WHITE);
 	        }
 
 			char* fileName = files[page + line];
@@ -709,24 +858,39 @@ void DrawPage(char** files, int fileCount, int currentItem)
             strcpy(displayStrings[line], fileName);
             displayStrings[line][strlen(fileName) - 3] = 0; // ".fw" = 3
 
-	        UG_TextboxSetText(&window1, id, displayStrings[line]);
+
+            size_t fullPathLength = strlen(path) + 1 + strlen(fileName) + 1;
+            char* fullPath = (char*)malloc(fullPathLength);
+            if (!fullPath) abort();
+
+            strcpy(fullPath, path);
+            strcat(fullPath, "/");
+            strcat(fullPath, fileName);
+            ui_firmware_image_get(fullPath, tile);
+            ui_draw_image(imageLeft, top + 2, TILE_WIDTH, TILE_HEIGHT, tile);
+
+            free(fullPath);
+
+	        //UG_TextboxSetText(&window1, id, displayStrings[line]);
+            UG_FontSelect(&FONT_8X12);
+            UG_PutString(textLeft, top + 2 + 2 + 16, displayStrings[line]);
 	    }
 
-        UpdateDisplay();
+        ui_update_display();
 
         for(int i = 0; i < ITEM_COUNT; ++i)
         {
             free(displayStrings[i]);
         }
+
+        free(tile);
 	}
 
 
 }
 
-char** files;
-int fileCount;
 
-static const char* menu_choose_file(const char* path)
+const char* ui_choose_file(const char* path)
 {
     const char* result = NULL;
 
@@ -736,10 +900,10 @@ static const char* menu_choose_file(const char* path)
     // At least one firmware must be available
     if (fileCount < 1)
     {
-        uint16_t err_id = TXB_ID_0 + (ITEM_COUNT / 2) - 1;
-        UG_TextboxSetForeColor(&window1, err_id, C_RED);
-        UG_TextboxSetText(&window1, err_id, "NO FIRMWARE ERROR");
-        UpdateDisplay();
+        //uint16_t err_id = TXB_ID_0 + (ITEM_COUNT / 2) - 1;
+        // UG_TextboxSetForeColor(&window1, err_id, C_RED);
+        // UG_TextboxSetText(&window1, err_id, "NO FIRMWARE ERROR");
+        // UpdateDisplay();
 
         indicate_error();
     }
@@ -747,7 +911,7 @@ static const char* menu_choose_file(const char* path)
 
     // Selection
     int currentItem = 0;
-    DrawPage(files, fileCount, currentItem);
+    ui_draw_page(files, fileCount, currentItem);
 
     odroid_gamepad_state previousState;
     input_read(&previousState);
@@ -757,8 +921,8 @@ static const char* menu_choose_file(const char* path)
 		odroid_gamepad_state state;
 		input_read(&state);
 
-        int page = currentItem / 10;
-        page *= 10;
+        int page = currentItem / ITEM_COUNT;
+        page *= ITEM_COUNT;
 
 		if (fileCount > 0)
 		{
@@ -769,12 +933,12 @@ static const char* menu_choose_file(const char* path)
 					if (currentItem + 1 < fileCount)
 		            {
 		                ++currentItem;
-		                DrawPage(files, fileCount, currentItem);
+		                ui_draw_page(files, fileCount, currentItem);
 		            }
 					else
 					{
 						currentItem = 0;
-		                DrawPage(files, fileCount, currentItem);
+		                ui_draw_page(files, fileCount, currentItem);
 					}
 				}
 	        }
@@ -785,12 +949,12 @@ static const char* menu_choose_file(const char* path)
 					if (currentItem > 0)
 		            {
 		                --currentItem;
-		                DrawPage(files, fileCount, currentItem);
+		                ui_draw_page(files, fileCount, currentItem);
 		            }
 					else
 					{
 						currentItem = fileCount - 1;
-						DrawPage(files, fileCount, currentItem);
+						ui_draw_page(files, fileCount, currentItem);
 					}
 				}
 	        }
@@ -798,15 +962,15 @@ static const char* menu_choose_file(const char* path)
 	        {
 	            if (fileCount > 0)
 				{
-					if (page + 10 < fileCount)
+					if (page + ITEM_COUNT < fileCount)
 		            {
-		                currentItem = page + 10;
-		                DrawPage(files, fileCount, currentItem);
+		                currentItem = page + ITEM_COUNT;
+		                ui_draw_page(files, fileCount, currentItem);
 		            }
 					else
 					{
 						currentItem = 0;
-						DrawPage(files, fileCount, currentItem);
+						ui_draw_page(files, fileCount, currentItem);
 					}
 				}
 	        }
@@ -814,20 +978,20 @@ static const char* menu_choose_file(const char* path)
 	        {
 	            if (fileCount > 0)
 				{
-					if (page - 10 >= 0)
+					if (page - ITEM_COUNT >= 0)
 		            {
-		                currentItem = page - 10;
-		                DrawPage(files, fileCount, currentItem);
+		                currentItem = page - ITEM_COUNT;
+		                ui_draw_page(files, fileCount, currentItem);
 		            }
 					else
 					{
 						currentItem = page;
-						while (currentItem + 10 < fileCount)
+						while (currentItem + ITEM_COUNT < fileCount)
 						{
-							currentItem += 10;
+							currentItem += ITEM_COUNT;
 						}
 
-		                DrawPage(files, fileCount, currentItem);
+		                ui_draw_page(files, fileCount, currentItem);
 					}
 				}
 	        }
@@ -847,7 +1011,7 @@ static const char* menu_choose_file(const char* path)
 	        }
             else if (!previousState.values[ODROID_INPUT_MENU] && state.values[ODROID_INPUT_MENU])
             {
-                ClearScreen();
+                ui_draw_title();
                 DisplayMessage("Exiting ...");
                 UpdateDisplay();
 
@@ -871,68 +1035,20 @@ static void menu_main()
 {
     sprintf(tempstring,"Ver: %s-%s", COMPILEDATE, GITREV);
 
-    UG_WindowCreate(&window1, objbuffwnd1, MAX_OBJECTS, window1callback);
-
-    UG_WindowSetTitleText(&window1, "ODROID-GO");
-    UG_WindowSetTitleTextFont(&window1, &FONT_10X16);
-    UG_WindowSetTitleTextAlignment(&window1, ALIGN_CENTER);
-
-    UG_S16 innerWidth = UG_WindowGetInnerWidth(&window1);
-    UG_S16 innerHeight = UG_WindowGetInnerHeight(&window1);
-    UG_S16 titleHeight = UG_WindowGetTitleHeight(&window1);
-    float textHeight = (float)(innerHeight) / (ITEM_COUNT + 2);
-
-    //UG_U16 header_id = TXB_ID_0 + ITEM_COUNT;
-    // UG_TextboxCreate(&window1, &header_textbox, header_id,
-    //     0, 0,
-    //     innerWidth, textHeight - 1);
-    // UG_TextboxSetBackColor(&window1, header_id, C_GREEN);
-    // UG_TextboxSetFont(&window1, header_id, &FONT_8X8);
-    // UG_TextboxSetText(&window1, header_id, "Header Line");
-
-    UG_U16 footer_id = TXB_ID_0 + ITEM_COUNT + 1;
-    UG_S16 footer_top = innerHeight - textHeight;
-    UG_TextboxCreate(&window1, &footer_textbox, footer_id,
-        0, footer_top,
-        innerWidth, footer_top + textHeight - 1);
-    UG_TextboxSetFont(&window1, footer_id, &FONT_8X12);
-    UG_TextboxSetForeColor(&window1, footer_id, C_DARK_GRAY);
-    UG_TextboxSetBackColor(&window1, footer_id, C_BLACK);
-    UG_TextboxSetAlignment(&window1, footer_id, ALIGN_CENTER);
-    UG_TextboxSetText(&window1, footer_id, tempstring);
-
-
-    for (int i = 0; i < ITEM_COUNT; ++i)
-    {
-        uint16_t id = TXB_ID_0 + i;
-        UG_S16 top = (i) * textHeight + (textHeight / 2);
-        UG_TextboxCreate(&window1, &item_textbox[i], id, 0, top, innerWidth, top + textHeight - 1);
-        UG_TextboxSetFont(&window1, id, &FONT_8X12);
-        //UG_TextboxSetForeColor(&window1, id, C_WHITE);
-        UG_TextboxSetAlignment(&window1, id, ALIGN_CENTER);
-        UG_TextboxSetText(&window1, id, "");
-    }
-
-
-    UG_WindowShow(&window1);
-    UpdateDisplay();
-
-
     // Check SD card
     esp_err_t ret = odroid_sdcard_open(SD_CARD);
     if (ret != ESP_OK)
     {
-        DisplayError("SD CARD ERROR");
+        //DisplayError("SD CARD ERROR");
         indicate_error();
     }
 
 
     // Check for /odroid/firmware
-    const char* path = "/sd/odroid/firmware";
 
     while(1)
     {
-        const char* fileName = menu_choose_file(path);
+        const char* fileName = ui_choose_file(path);
         if (!fileName) abort();
 
         printf("%s: fileName='%s'\n", __func__, fileName);
@@ -965,6 +1081,7 @@ void app_main(void)
     ili9341_clear(0x0000);
 
     UG_Init(&gui, pset, 320, 240);
+
     menu_main();
 
 

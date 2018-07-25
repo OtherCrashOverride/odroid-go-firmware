@@ -28,11 +28,15 @@ typedef struct
 } odroid_partition_t;
 
 
+// ffmpeg -i tile.png -f rawvideo -pix_fmt rgb565 tile.raw
+uint8_t tile[86 * 48 * 2];
+
+
 int main(int argc, char *argv[])
 {
     if (argc < 4)
     {
-        printf("usage: %s description type subtype length label binary [...]\n", argv[0]);
+        printf("usage: %s description tile type subtype length label binary [...]\n", argv[0]);
     }
     else
     {
@@ -51,8 +55,25 @@ int main(int argc, char *argv[])
         count = fwrite(FirmwareDescription, FIRMWARE_DESCRIPTION_SIZE, 1, file);
         printf("FirmwareDescription='%s'\n", FirmwareDescription);
 
+        FILE* tileFile = fopen(argv[2], "rb");
+        if (!tileFile)
+        {
+            printf("tile file not found.\n");
+            abort();
+        }
+
+        count = fread(tile, 1, sizeof(tile), tileFile);
+        if (count != sizeof(tile))
+        {
+            printf("invalid tile file.\n");
+            abort();
+        }
+
+        count = fwrite(tile, 1, sizeof(tile), file);
+        printf("tile: wrote %d bytes.\n", (int)count);
+
         int part_count = 0;
-        int i = 2;
+        int i = 3;
         while (i < argc)
         {
             odroid_partition_t part = {0};
