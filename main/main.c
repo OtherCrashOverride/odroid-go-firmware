@@ -843,19 +843,15 @@ static void ui_draw_page(char** files, int fileCount, int currentItem)
 
 	        if ((page) + line == currentItem)
 	        {
-	            //UG_TextboxSetForeColor(&window1, id, C_BLACK);
-                //UG_TextboxSetBackColor(&window1, id, C_YELLOW);
                 UG_SetForecolor(C_BLACK);
                 UG_SetBackcolor(C_YELLOW);
                 UG_FillFrame(0, top + 2, 319, top + itemHeight - 1 - 1, C_YELLOW);
 	        }
 	        else
 	        {
-	            //UG_TextboxSetForeColor(&window1, id, C_BLACK);
-                //UG_TextboxSetBackColor(&window1, id, C_WHITE);
-
                 UG_SetForecolor(C_BLACK);
                 UG_SetBackcolor(C_WHITE);
+                UG_FillFrame(0, top + 2, 319, top + itemHeight - 1 - 1, C_WHITE);
 	        }
 
 			char* fileName = files[page + line];
@@ -907,11 +903,7 @@ const char* ui_choose_file(const char* path)
     // At least one firmware must be available
     if (fileCount < 1)
     {
-        //uint16_t err_id = TXB_ID_0 + (ITEM_COUNT / 2) - 1;
-        // UG_TextboxSetForeColor(&window1, err_id, C_RED);
-        // UG_TextboxSetText(&window1, err_id, "NO FIRMWARE ERROR");
-        // UpdateDisplay();
-
+        DisplayError("NO FILES ERROR");
         indicate_error();
     }
 
@@ -1046,7 +1038,7 @@ static void menu_main()
     esp_err_t ret = odroid_sdcard_open(SD_CARD);
     if (ret != ESP_OK)
     {
-        //DisplayError("SD CARD ERROR");
+        DisplayError("SD CARD ERROR");
         indicate_error();
     }
 
