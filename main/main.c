@@ -55,7 +55,7 @@ char tempstring[512];
 char** files;
 int fileCount;
 const char* path = "/sd/odroid/firmware";
-const char* VERSION = NULL;
+char* VERSION = NULL;
 
 #define TILE_WIDTH (86)
 #define TILE_HEIGHT (48)
@@ -484,8 +484,8 @@ void flash_firmware(const char* fullPath)
     free(tileData);
 
     // start to begin, b back
-    DisplayMessage("");
-    DisplayFooter("[B] Cancel      [Start] OK");
+    DisplayMessage("[START]");
+    DisplayFooter("[B] Cancel");
     //UpdateDisplay();
 
     odroid_gamepad_state previousState;
@@ -751,7 +751,7 @@ void flash_firmware(const char* fullPath)
             sprintf(tempstring, "OK: [%d] Length=%#08x", parts_count, length);
 
             printf("%s\n", tempstring);
-            DisplayFooter(tempstring);
+            //DisplayFooter(tempstring);
         }
 
         parts[parts_count++] = slot;
