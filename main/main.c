@@ -55,7 +55,7 @@ char tempstring[1024];
 char** files;
 int fileCount;
 const char* path = "/sd/odroid/firmware";
-
+const char* VERSION = NULL;
 
 #define TILE_WIDTH (86)
 #define TILE_HEIGHT (48)
@@ -218,15 +218,21 @@ void boot_application()
     // Set firmware active
     const esp_partition_t* partition = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
         ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
-    if (partition != NULL)
+    if (partition == NULL)
     {
-        esp_err_t err = esp_ota_set_boot_partition(partition);
-        if (err == ESP_OK)
-        {
-            // reboot
-            esp_restart();
-        }
+        DisplayError("NO BOOT PART ERROR");
+        indicate_error();
     }
+
+    esp_err_t err = esp_ota_set_boot_partition(partition);
+    if (err != ESP_OK)
+    {
+        DisplayError("BOOT SET ERROR");
+        indicate_error();
+    }
+
+    // reboot
+    esp_restart();
 }
 
 
@@ -375,6 +381,7 @@ void flash_firmware(const char* fullPath)
 {
     size_t count;
 
+    printf("%s: HEAP=%#010x\n", __func__, esp_get_free_heap_size());
 
     ui_draw_title();
     ui_update_display();
@@ -771,17 +778,22 @@ static void ui_draw_title()
     // Header
     UG_FillFrame(0, 0, 319, 15, C_MIDNIGHT_BLUE);
     UG_FontSelect(&FONT_8X8);
-    short titleLeft = (320 / 2) - (strlen(TITLE) * 8 / 2);
+    const short titleLeft = (320 / 2) - (strlen(TITLE) * 9 / 2);
     UG_SetForecolor(C_WHITE);
     UG_SetBackcolor(C_MIDNIGHT_BLUE);
     UG_PutString(titleLeft, 4, TITLE);
 
     // Footer
     UG_FillFrame(0, 239 - 16, 319, 239, C_MIDNIGHT_BLUE);
+    const short footerLeft = (320 / 2) - (strlen(VERSION) * 9 / 2);
+    UG_SetForecolor(C_DARK_GRAY);
+    UG_PutString(footerLeft, 240 - 4 - 8, VERSION);
 }
 
 static void ui_draw_page(char** files, int fileCount, int currentItem)
 {
+    printf("%s: HEAP=%#010x\n", __func__, esp_get_free_heap_size());
+
     int page = currentItem / ITEM_COUNT;
     page *= ITEM_COUNT;
 
@@ -885,14 +897,13 @@ static void ui_draw_page(char** files, int fileCount, int currentItem)
 
         free(tile);
 	}
-
-
 }
-
 
 const char* ui_choose_file(const char* path)
 {
     const char* result = NULL;
+
+    printf("%s: HEAP=%#010x\n", __func__, esp_get_free_heap_size());
 
     fileCount = odroid_sdcard_files_get(path, ".fw", &files);
     printf("%s: fileCount=%d\n", __func__, fileCount);
@@ -1060,12 +1071,19 @@ static void menu_main()
 }
 
 
-
-
-
 void app_main(void)
 {
-    //print_partitions();
+    const char* VER_PREFIX = "Ver: ";
+    size_t ver_size = strlen(VER_PREFIX) + strlen(COMPILEDATE) + 1 + strlen(GITREV) + 1;
+    VERSION = malloc(ver_size);
+    if (!VERSION) abort();
+
+    strcpy(VERSION, VER_PREFIX);
+    strcat(VERSION, COMPILEDATE);
+    strcat(VERSION, "-");
+    strcat(VERSION, GITREV);
+
+    printf("odroid-go-firmware (%s). HEAP=%#010x\n", VERSION, esp_get_free_heap_size());
 
     nvs_flash_init();
 
