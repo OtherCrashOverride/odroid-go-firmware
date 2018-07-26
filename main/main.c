@@ -1052,6 +1052,8 @@ static void menu_main()
 {
     sprintf(tempstring,"Ver: %s-%s", COMPILEDATE, GITREV);
 
+    ui_draw_title();
+
     // Check SD card
     esp_err_t ret = odroid_sdcard_open(SD_CARD);
     if (ret != ESP_OK)
@@ -1104,7 +1106,7 @@ void app_main(void)
 
 
     ili9341_init();
-    ili9341_clear(0x0000);
+    ili9341_clear(0xffff);
 
     UG_Init(&gui, pset, 320, 240);
 
