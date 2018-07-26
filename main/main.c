@@ -186,6 +186,23 @@ static void DisplayMessage(const char* message)
     UpdateDisplay();
 }
 
+static void DisplayProgress(int percent)
+{
+    if (percent > 100) percent = 100;
+
+    const int WIDTH = 200;
+    const int HEIGHT = 12;
+    const int FILL_WIDTH = WIDTH * (percent / 100.0f);
+
+    short left = (320 / 2) - (WIDTH / 2);
+    short top = (240 / 2) - (12 / 2) + 16;
+    UG_FillFrame(left - 1, top - 1, left + WIDTH + 1, top + HEIGHT + 1, C_WHITE);
+    UG_DrawFrame(left - 1, top - 1, left + WIDTH + 1, top + HEIGHT + 1, C_BLACK);
+    UG_FillFrame(left, top, left + FILL_WIDTH, top + HEIGHT, C_GREEN);
+
+    //UpdateDisplay();
+}
+
 static void DisplayFooter(const char* message)
 {
     UG_FontSelect(&FONT_8X12);
@@ -661,6 +678,7 @@ void flash_firmware(const char* fullPath)
             sprintf(tempstring, "ERASE: [%d] BLOCKS=%#04x", parts_count, eraseBlocks);
 
             printf("%s\n", tempstring);
+            DisplayProgress(0);
             DisplayMessage(tempstring);
 
             esp_err_t ret = spi_flash_erase_range(curren_flash_address, eraseBlocks * ERASE_BLOCK_SIZE);
@@ -684,8 +702,8 @@ void flash_firmware(const char* fullPath)
                 sprintf(tempstring, "WRITE: [%d] %#08x", parts_count, offset);
 
                 printf("%s\n", tempstring);
+                DisplayProgress((float)offset / (float)(length - ERASE_BLOCK_SIZE) * 100.0f);
                 DisplayMessage(tempstring);
-
 
                 // read
                 //printf("Reading offset=0x%x\n", offset);
