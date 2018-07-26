@@ -90,7 +90,7 @@ int odroid_sdcard_files_get(const char* path, const char* extension, char*** fil
 
 
     int count = 0;
-    char** result = (char**)heap_caps_malloc(MAX_FILES * sizeof(void*), MALLOC_CAPS);
+    char** result = (char**)malloc(MAX_FILES * sizeof(void*));
     if (!result) abort();
 
 
@@ -106,7 +106,7 @@ int odroid_sdcard_files_get(const char* path, const char* extension, char*** fil
     if (extensionLength < 1) abort();
 
 
-    char* temp = (char*)heap_caps_malloc(extensionLength + 1, MALLOC_CAPS);
+    char* temp = (char*)malloc(extensionLength + 1);
     if (!temp) abort();
 
     memset(temp, 0, extensionLength + 1);
@@ -135,7 +135,9 @@ int odroid_sdcard_files_get(const char* path, const char* extension, char*** fil
             {
                 if (strcmp(temp, extension) == 0)
                 {
-                    result[count] = (char*)heap_caps_malloc(len + 1, MALLOC_CAPS);
+                    result[count] = (char*)malloc(len + 1);
+                    //printf("%s: allocated %p\n", __func__, result[count]);
+
                     if (!result[count])
                     {
                         abort();
@@ -150,6 +152,7 @@ int odroid_sdcard_files_get(const char* path, const char* extension, char*** fil
         }
     }
 
+    closedir(dir);
     free(temp);
 
     sort_files(result, count);
@@ -162,9 +165,11 @@ void odroid_sdcard_files_free(char** files, int count)
 {
     for (int i = 0; i < count; ++i)
     {
+        //printf("%s: freeing item %p\n", __func__, files[i]);
         free(files[i]);
     }
 
+    //printf("%s: freeing array %p\n", __func__, files);
     free(files);
 }
 

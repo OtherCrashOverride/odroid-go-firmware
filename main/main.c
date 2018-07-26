@@ -49,7 +49,7 @@ typedef struct
 
 uint16_t fb[320 * 240];
 UG_GUI gui;
-char tempstring[1024];
+char tempstring[512];
 
 #define ITEM_COUNT (4)
 char** files;
@@ -60,6 +60,7 @@ const char* VERSION = NULL;
 #define TILE_WIDTH (86)
 #define TILE_HEIGHT (48)
 #define TILE_LENGTH (TILE_WIDTH * TILE_HEIGHT * 2)
+//uint8_t TileData[TILE_LENGTH];
 
 
 void indicate_error()
@@ -129,6 +130,8 @@ void ui_firmware_image_get(const char* filename, uint16_t* outData)
         //indicate_error();
         abort();
     }
+
+    free(header);
 
     //printf("Header OK: '%s'\n", header);
 
@@ -422,6 +425,7 @@ void flash_firmware(const char* fullPath)
     }
 
     printf("Header OK: '%s'\n", header);
+    free(header);
 
     // read description
     count = fread(FirmwareDescription, 1, FIRMWARE_DESCRIPTION_SIZE, file);
@@ -805,18 +809,9 @@ static void ui_draw_page(char** files, int fileCount, int currentItem)
     const int rightWidth = (213); // 320 * (2.0 / 3.0)
     const int leftWidth = 320 - rightWidth;
 
-    // Tile width = 85, height = 48 (16:9)
-    const short imageLeft = (leftWidth / 2) - (85 / 2);
+    // Tile width = 86, height = 48 (16:9)
+    const short imageLeft = (leftWidth / 2) - (86 / 2);
     const short textLeft = 320 - rightWidth;
-
-    // for (int i = 0; i < ITEM_COUNT; ++i)
-    // {
-    //     short top = 16 + (i * itemHeight) - 1;
-    //     //UG_FillFrame(0, top, 319, top + itemHeight - 1, debug[i]);
-    //     UG_FillFrame(0, top + 2, 319, top + itemHeight - 1 - 1, C_LIGHT_GRAY);
-    //
-    //     ui_draw_image(imageLeft, top + 2, image_tile.width, image_tile.height, image_tile.pixel_data);
-    // }
 
 
 	if (fileCount < 1)
@@ -905,6 +900,7 @@ const char* ui_choose_file(const char* path)
 
     printf("%s: HEAP=%#010x\n", __func__, esp_get_free_heap_size());
 
+    files = 0;
     fileCount = odroid_sdcard_files_get(path, ".fw", &files);
     printf("%s: fileCount=%d\n", __func__, fileCount);
 
@@ -1065,6 +1061,8 @@ static void menu_main()
         printf("%s: fileName='%s'\n", __func__, fileName);
 
         flash_firmware(fileName);
+
+        free(fileName);
     }
 
     indicate_error();
