@@ -99,18 +99,22 @@ static void ui_draw_image(short x, short y, short width, short height, uint16_t*
 void ui_firmware_image_get(const char* filename, uint16_t* outData)
 {
     //printf("%s: filename='%s'\n", __func__, filename);
+    const uint8_t DEFAULT_DATA = 0xff;
 
     FILE* file = fopen(filename, "rb");
-    if (!file) abort();
+    if (!file)
+    {
+        memset(outData, DEFAULT_DATA, TILE_LENGTH);
+        return;
+    }
 
     // Check the header
     const size_t headerLength = strlen(HEADER_V00_01);
     char* header = malloc(headerLength + 1);
     if(!header)
     {
-        //DisplayError("MEMORY ERROR");
-        //indicate_error();
-        abort();
+        memset(outData, DEFAULT_DATA, TILE_LENGTH);
+        goto ui_firmware_image_get_exit;
     }
 
     // null terminate
@@ -119,19 +123,15 @@ void ui_firmware_image_get(const char* filename, uint16_t* outData)
     size_t count = fread(header, 1, headerLength, file);
     if (count != headerLength)
     {
-        //DisplayError("HEADER READ ERROR");
-        //indicate_error();
-        abort();
+        memset(outData, DEFAULT_DATA, TILE_LENGTH);
+        goto ui_firmware_image_get_exit;
     }
 
     if (strncmp(HEADER_V00_01, header, headerLength) != 0)
     {
-        //DisplayError("HEADER MATCH ERROR");
-        //indicate_error();
-        abort();
+        memset(outData, DEFAULT_DATA, TILE_LENGTH);
+        goto ui_firmware_image_get_exit;
     }
-
-    free(header);
 
     //printf("Header OK: '%s'\n", header);
 
@@ -139,15 +139,20 @@ void ui_firmware_image_get(const char* filename, uint16_t* outData)
     count = fread(FirmwareDescription, 1, FIRMWARE_DESCRIPTION_SIZE, file);
     if (count != FIRMWARE_DESCRIPTION_SIZE)
     {
-        //DisplayError("DESCRIPTION READ ERROR");
-        //indicate_error();
-        abort();
+        memset(outData, DEFAULT_DATA, TILE_LENGTH);
+        goto ui_firmware_image_get_exit;
     }
 
     // read tile
     count = fread(outData, 1, TILE_LENGTH, file);
-    if (count != TILE_LENGTH) abort();
+    if (count != TILE_LENGTH)
+    {
+        memset(outData, DEFAULT_DATA, TILE_LENGTH);
+    }
 
+
+ui_firmware_image_get_exit:
+    free(header);
     fclose(file);
 }
 
