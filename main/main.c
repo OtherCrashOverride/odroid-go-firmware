@@ -182,7 +182,7 @@ static void DisplayMessage(const char* message)
 {
     UG_FontSelect(&FONT_8X12);
     short left = (320 / 2) - (strlen(message) * 9 / 2);
-    short top = (240 / 2) - (12 / 2);
+    short top = (240 / 2) + 8 + (12 / 2) + 16;
     UG_SetForecolor(C_BLACK);
     UG_SetBackcolor(C_WHITE);
     UG_FillFrame(0, top, 319, top + 12, C_WHITE);
@@ -200,10 +200,14 @@ static void DisplayProgress(int percent)
     const int FILL_WIDTH = WIDTH * (percent / 100.0f);
 
     short left = (320 / 2) - (WIDTH / 2);
-    short top = (240 / 2) - (12 / 2) + 16;
+    short top = (240 / 2) - (HEIGHT / 2) + 16;
     UG_FillFrame(left - 1, top - 1, left + WIDTH + 1, top + HEIGHT + 1, C_WHITE);
     UG_DrawFrame(left - 1, top - 1, left + WIDTH + 1, top + HEIGHT + 1, C_BLACK);
-    UG_FillFrame(left, top, left + FILL_WIDTH, top + HEIGHT, C_GREEN);
+
+    if (FILL_WIDTH > 0)
+    {
+        UG_FillFrame(left, top, left + FILL_WIDTH, top + HEIGHT, C_GREEN);
+    }
 
     //UpdateDisplay();
 }
@@ -463,10 +467,6 @@ void flash_firmware(const char* fullPath)
     FirmwareDescription[FIRMWARE_DESCRIPTION_SIZE - 1] = 0;
 
     printf("FirmwareDescription='%s'\n", FirmwareDescription);
-
-    //DisplayMessage(FirmwareDescription);
-    //DisplayFooter("[Start]");
-    //UG_TextboxSetText(&window1, TXB_ID_0, FirmwareDescription);
     DisplayHeader(FirmwareDescription);
     //UpdateDisplay();
 
@@ -485,10 +485,16 @@ void flash_firmware(const char* fullPath)
         indicate_error();
     }
 
-    ui_draw_image((320 / 2) - (TILE_WIDTH / 2), (16 + 16 + 16),
+    const uint16_t tileLeft = (320 / 2) - (TILE_WIDTH / 2);
+    const uint16_t tileTop = (16 + 16 + 16);
+    ui_draw_image(tileLeft, tileTop,
         TILE_WIDTH, TILE_HEIGHT, tileData);
 
     free(tileData);
+
+    // Tile border
+    UG_DrawFrame(tileLeft - 1, tileTop - 1, tileLeft + TILE_WIDTH, tileTop + TILE_HEIGHT, C_BLACK);
+    UpdateDisplay();
 
     // start to begin, b back
     DisplayMessage("[START]");
@@ -520,7 +526,7 @@ void flash_firmware(const char* fullPath)
     //UpdateDisplay();
 
 
-    DisplayMessage("VERIFY");
+    DisplayMessage("Verifying ...");
 
 
     const int ERASE_BLOCK_SIZE = 4096;
@@ -682,7 +688,7 @@ void flash_firmware(const char* fullPath)
             if (eraseBlocks * ERASE_BLOCK_SIZE < length) ++eraseBlocks;
 
             // Display
-            sprintf(tempstring, "ERASE: [%d] BLOCKS=%#04x", parts_count, eraseBlocks);
+            sprintf(tempstring, "Erasing ... (%d)", parts_count);
 
             printf("%s\n", tempstring);
             DisplayProgress(0);
@@ -706,7 +712,7 @@ void flash_firmware(const char* fullPath)
             for (int offset = 0; offset < length; offset += ERASE_BLOCK_SIZE)
             {
                 // Display
-                sprintf(tempstring, "WRITE: [%d] %#08x", parts_count, offset);
+                sprintf(tempstring, "Writing (%d)", parts_count);
 
                 printf("%s\n", tempstring);
                 DisplayProgress((float)offset / (float)(length - ERASE_BLOCK_SIZE) * 100.0f);
@@ -898,6 +904,9 @@ static void ui_draw_page(char** files, int fileCount, int currentItem)
             ui_draw_image(imageLeft, top + 2, TILE_WIDTH, TILE_HEIGHT, tile);
 
             free(fullPath);
+
+            // Tile border
+            //UG_DrawFrame(imageLeft - 1, top + 1, imageLeft + TILE_WIDTH, top + 2 + TILE_HEIGHT, C_BLACK);
 
 	        //UG_TextboxSetText(&window1, id, displayStrings[line]);
             UG_FontSelect(&FONT_8X12);
