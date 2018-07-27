@@ -390,6 +390,8 @@ static void write_partition_table(odroid_partition_t* parts, size_t parts_count)
         DisplayError("TABLE WRITE ERROR");
         indicate_error();
     }
+
+    esp_partition_reload_table();
 }
 
 
