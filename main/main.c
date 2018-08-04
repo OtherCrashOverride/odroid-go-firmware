@@ -714,7 +714,7 @@ void flash_firmware(const char* fullPath)
                 // Display
                 sprintf(tempstring, "Writing (%d)", parts_count);
 
-                printf("%s\n", tempstring);
+                printf("%s - %#08x\n", tempstring, offset);
                 DisplayProgress((float)offset / (float)(length - ERASE_BLOCK_SIZE) * 100.0f);
                 DisplayMessage(tempstring);
 
@@ -778,6 +778,121 @@ void flash_firmware(const char* fullPath)
             indicate_error();
         }
 
+    }
+
+    close(file);
+
+
+    // Utility
+    FILE* util = fopen("/sd/odroid/utility.bin", "rb");
+    if (util)
+    {
+        if ((curren_flash_address & 0xffff0000) != curren_flash_address)
+        {
+            DisplayError("ALIGNMENT ERROR");
+            indicate_error();
+        }
+
+
+        // Get file size
+        fseek(util, 0, SEEK_END);
+        size_t length = ftell(util);
+        fseek(util, 0, SEEK_SET);
+
+        printf("utility.bin - length=%d\n", length);
+
+
+        // TODO: Determine if there is room
+
+
+        // turn LED off
+        gpio_set_level(GPIO_NUM_2, 0);
+
+
+        // Erase
+        int eraseBlocks = length / ERASE_BLOCK_SIZE;
+        if (eraseBlocks * ERASE_BLOCK_SIZE < length) ++eraseBlocks;
+
+        // Display
+        sprintf(tempstring, "Erasing Utility ...");
+
+        printf("%s\n", tempstring);
+        DisplayProgress(0);
+        DisplayMessage(tempstring);
+
+        esp_err_t ret = spi_flash_erase_range(curren_flash_address, eraseBlocks * ERASE_BLOCK_SIZE);
+        if (ret != ESP_OK)
+        {
+            printf("spi_flash_erase_range failed. eraseBlocks=%d\n", eraseBlocks);
+            DisplayError("ERASE ERROR");
+            indicate_error();
+        }
+
+
+        // turn LED on
+        gpio_set_level(GPIO_NUM_2, 1);
+
+
+        // Write data
+        int totalCount = 0;
+        for (int offset = 0; offset < length; offset += ERASE_BLOCK_SIZE)
+        {
+            // Display
+            sprintf(tempstring, "Writing Utility");
+
+            printf("%s - %#08x\n", tempstring, offset);
+            DisplayProgress((float)offset / (float)(length - ERASE_BLOCK_SIZE) * 100.0f);
+            DisplayMessage(tempstring);
+
+            // read
+            //printf("Reading offset=0x%x\n", offset);
+            count = fread(data, 1, ERASE_BLOCK_SIZE, util);
+            if (count <= 0)
+            {
+                DisplayError("DATA READ ERROR");
+                indicate_error();
+            }
+
+            if (offset + count >= length)
+            {
+                count = length - offset;
+            }
+
+
+            // flash
+            //printf("Writing offset=0x%x\n", offset);
+            //ret = esp_partition_write(part, offset, data, count);
+            ret = spi_flash_write(curren_flash_address + offset, data, count);
+            if (ret != ESP_OK)
+            {
+                printf("spi_flash_write failed. address=%#08x\n", curren_flash_address + offset);
+                DisplayError("WRITE ERROR");
+                indicate_error();
+            }
+
+            totalCount += count;
+        }
+
+        // Add partition
+        odroid_partition_t util_part;
+        memset(&util_part, 0, sizeof(util_part));
+
+
+        util_part.type = PART_TYPE_APP;
+        util_part.subtype = PART_SUBTYPE_TEST;
+
+        strcpy((char*)util_part.label, "utility");
+
+        util_part.flags = 0;
+
+        // 64k align
+        if ((length & 0xffff0000) != length) length += 0x10000;
+        util_part.length = length & 0xffff0000;
+
+
+        parts[parts_count++] = util_part;
+
+        fclose(util);
     }
 
 
