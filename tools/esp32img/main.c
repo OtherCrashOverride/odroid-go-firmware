@@ -157,7 +157,7 @@ static void extract_partitions(FILE* fp)
         // Erase the RF data partition
         fseek(output, rf_part->pos.offset, SEEK_SET);
 
-        uint8_t blank = 0xff;
+        const uint8_t blank = 0xff;
         size_t blank_count = fwrite(&blank, sizeof(blank), rf_part->pos.size, output);
         if (blank_count != rf_part->pos.size) abort();
 
@@ -174,7 +174,13 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        printf("usage: %s imagefile\n", argv[0]);
+        printf("Usage:\n");
+        printf("\t%s filename\n", argv[0]);
+        printf("\n");
+        printf("Example:\n");
+        printf("\t./esptool.py --port \"/dev/ttyUSB0\" --baud 921600 read_flash 0 0xf00000 flash.bin\n");
+        printf("\t%s flash.bin\n", argv[0]);
+        printf("\n");
         exit(1);
     }
 
