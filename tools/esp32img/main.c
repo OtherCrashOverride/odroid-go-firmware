@@ -3,8 +3,6 @@
 #include <string.h>
 #include <stdint.h>
 
-// ./esptool.py --port "/dev/ttyUSB0" --baud 921600 read_flash 0 0xf00000 imagename.bin
-
 
 typedef struct {
     uint32_t offset;
@@ -178,7 +176,7 @@ int main(int argc, char *argv[])
         printf("\t%s filename\n", argv[0]);
         printf("\n");
         printf("Example:\n");
-        printf("\t./esptool.py --port \"/dev/ttyUSB0\" --baud 921600 read_flash 0 0xf00000 flash.bin\n");
+        printf("\t./esptool.py --port \"/dev/ttyUSB0\" --baud 921600 read_flash 0 0x1000000 flash.bin\n");
         printf("\t%s flash.bin\n", argv[0]);
         printf("\n");
         exit(1);
