@@ -33,6 +33,8 @@ typedef struct {
 
 
 const esp_partition_info_t* partition_data;
+const char* filename;
+
 
 static void load_partitions(FILE* fp)
 {
@@ -90,13 +92,33 @@ static void extract_partitions(FILE* fp)
         if (part_end > data_end) data_end = part_end;
     }
 
-    const char* filename = "image.dat";
-    printf("./esptool.py --port \"/dev/ttyUSB0\" --baud 921600 write_flash -z --flash_mode dio --flash_freq 80m --flash_size detect 0 %s\n", filename);
+    const char* image_ext = ".img";
+
+    // remove filename extenstion
+    size_t len = strlen(filename);
+    while (len > 1)
+    {
+        --len;
+        if (filename[len] == '.')
+        {
+            break;
+        }
+    }
+
+    if (len < 1) abort();
+
+    char* image_name = malloc(len + strlen(image_ext) + 1);
+    if (!image_name) abort();
+
+    strncpy(image_name, filename, len);
+    strcat(image_name, image_ext);
+
+    printf("./esptool.py --port \"/dev/ttyUSB0\" --baud 921600 write_flash -z --flash_mode dio --flash_freq 80m --flash_size detect 0 %s\n", image_name);
 
 
     fseek(fp, 0, SEEK_SET);
 
-    FILE* output = fopen(filename, "wb");
+    FILE* output = fopen(image_name, "wb");
     if (!output) abort();
 
     uint8_t* data = malloc(data_end);
@@ -121,7 +143,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    const char* filename = argv[1];
+    filename = argv[1];
 
     FILE* fp = fopen(filename, "rb");
 
