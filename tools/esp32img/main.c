@@ -31,6 +31,20 @@ typedef struct {
 #define ESP_PARTITION_MAGIC 0x50AA
 #define ESP_PARTITION_MAGIC_MD5 0xEBEB
 
+#define PART_TYPE_APP 0x00
+#define PART_SUBTYPE_FACTORY  0x00
+#define PART_SUBTYPE_OTA_FLAG 0x10
+#define PART_SUBTYPE_OTA_MASK 0x0f
+#define PART_SUBTYPE_TEST     0x20
+
+#define PART_TYPE_DATA 0x01
+#define PART_SUBTYPE_DATA_OTA 0x00
+#define PART_SUBTYPE_DATA_RF  0x01
+#define PART_SUBTYPE_DATA_WIFI 0x02
+
+#define PART_TYPE_END 0xff
+#define PART_SUBTYPE_END 0xff
+
 
 const esp_partition_info_t* partition_data;
 const char* filename;
@@ -77,6 +91,7 @@ static void extract_partitions(FILE* fp)
     printf("\n");
 
     uint32_t data_end = 0;
+    const esp_partition_info_t * rf_part = NULL;
 
     for (int i = 0; i < ESP_PARTITION_TABLE_MAX_ENTRIES; ++i)
     {
@@ -85,6 +100,13 @@ static void extract_partitions(FILE* fp)
             part->magic == ESP_PARTITION_MAGIC_MD5)
         {
             break;
+        }
+
+        // Record the location of PHY data
+        if (part->type == PART_TYPE_DATA &&
+            part->subtype == PART_SUBTYPE_DATA_RF)
+        {
+            rf_part = part;
         }
 
         uint32_t part_end = part->pos.offset + part->pos.size;
@@ -129,6 +151,19 @@ static void extract_partitions(FILE* fp)
 
     count = fwrite(data, 1, data_end, output);
     if (count != data_end) abort();
+
+    if (rf_part)
+    {
+        // Erase the RF data partition
+        fseek(output, rf_part->pos.offset, SEEK_SET);
+
+        uint8_t blank = 0xff;
+        size_t blank_count = fwrite(&blank, sizeof(blank), rf_part->pos.size, output);
+        if (blank_count != rf_part->pos.size) abort();
+
+        //printf("erased RF data - offset=%#08x, size=%#08x\n",
+        //    rf_part->pos.offset, rf_part->pos.size);
+    }
 
     fclose(output);
 
