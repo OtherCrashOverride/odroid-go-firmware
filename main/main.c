@@ -784,7 +784,7 @@ void flash_firmware(const char* fullPath)
 
 
     // Utility
-    FILE* util = fopen("/sd/odroid/utility.bin", "rb");
+    FILE* util = fopen("/sd/odroid/firmware/utility.bin", "rb");
     if (util)
     {
         if ((curren_flash_address & 0xffff0000) != curren_flash_address)
