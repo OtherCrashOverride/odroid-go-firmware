@@ -260,6 +260,8 @@ void boot_application()
         indicate_error();
     }
 
+    backlight_deinit();
+    
     // reboot
     esp_restart();
 }

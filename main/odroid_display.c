@@ -292,6 +292,15 @@ static void backlight_init()
     ledc_fade_start(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, LEDC_FADE_NO_WAIT);
 }
 
+void backlight_deinit()
+{
+    ledc_fade_func_uninstall();
+    esp_err_t err = ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
+    if (err != ESP_OK)
+    {
+        printf("%s: ledc_stop failed.\n", __func__);
+    }
+}
 
 void ili9341_write_frame(uint16_t* buffer)
 {
@@ -454,14 +463,14 @@ void ili9341_init()
     devcfg.queue_size = 7;                          //We want to be able to queue 7 transactions at a time
     devcfg.pre_cb = ili_spi_pre_transfer_callback;  //Specify pre-transfer callback to handle D/C line
     devcfg.post_cb = ili_spi_post_transfer_callback;
-    devcfg.flags = 0 ;//SPI_DEVICE_HALFDUPLEX;
+    devcfg.flags = SPI_DEVICE_NO_DUMMY ;//SPI_DEVICE_HALFDUPLEX;
 
     //Initialize the SPI bus
-    ret=spi_bus_initialize(VSPI_HOST, &buscfg, 1);
+    ret=spi_bus_initialize(HSPI_HOST, &buscfg, 1);
     assert(ret==ESP_OK);
 
     //Attach the LCD to the SPI bus
-    ret=spi_bus_add_device(VSPI_HOST, &devcfg, &spi);
+    ret=spi_bus_add_device(HSPI_HOST, &devcfg, &spi);
     assert(ret==ESP_OK);
 
 
