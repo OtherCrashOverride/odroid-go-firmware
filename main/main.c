@@ -425,7 +425,7 @@ void flash_firmware(const char* fullPath)
     FILE* file = fopen(fullPath, "rb");
     if (file == NULL)
     {
-        DisplayError("NO FILE ERROR");
+        DisplayError("FILE OPEN ERROR");
         indicate_error();
     }
 
