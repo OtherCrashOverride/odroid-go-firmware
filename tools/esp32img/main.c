@@ -161,6 +161,29 @@ static void extract_partitions(FILE* fp)
 
         //printf("erased RF data - offset=%#08x, size=%#08x\n",
         //    rf_part->pos.offset, rf_part->pos.size);
+
+
+        // Read the default RF data
+        FILE* rfdata = fopen("phy_init_data.bin", "rb");
+        if (!rfdata) abort();
+
+        fseek(rfdata, 0, SEEK_END);
+        size_t rffileSize = ftell(rfdata);
+        fseek(rfdata, 0, SEEK_SET);
+
+        if (rffileSize > rf_part->pos.size) abort();
+
+        void* rfptr = malloc(rffileSize);
+        if (!rfptr) abort();
+
+        size_t rf_count = fread(rfptr, 1, rffileSize, rfdata);
+        if (rf_count != rffileSize) abort();
+
+        // Write the default RF data
+        fseek(output, rf_part->pos.offset, SEEK_SET);
+        fwrite(rfptr, 1, rffileSize, output);
+
+        free(rfptr);
     }
 
     fclose(output);
